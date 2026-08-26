@@ -109,6 +109,16 @@ Contract 或 provider 变化必须增加契约测试；数据库状态变化必�
 
 Prompt 位于 `apps/agent-service/reso_agent/prompts/<mode>/vN.md`，必须进入 Git、可 review、可测试、可回滚。禁止在线修改生产 Prompt 而不提交版本。修改 Prompt 时必须说明行为影响并更新相关 eval。
 
+## Agent UX — Breathing Conversation
+
+Reso Agent 不应表现为“等待计算 → 输出答案”的机器，而应表现为一个会听、会想起、会犹豫、会修正并继续理解用户的 Agent。所有用户可见的“思考”必须是经过设计、可审计的 Public Reflection，绝不是模型隐藏推理过程。
+
+- 普通聊天直接回应；只有复杂度和真实证据需要时才增加状态、公开反思或重新考虑。
+- `status` 只能描述 Runtime 已发生或正在发生的公开阶段，不得伪造检索、记忆或工具行为。
+- `public_reflection` 必须引用授权 evidence，并对 Persona hypothesis 与弱证据保留不确定性。
+- `reconsidered` 必须由证据冲突或真实不确定性触发，不得随机制造“人味”或戏剧效果。
+- 浏览器、Session、Trace 与日志均不得接收或保存 Chain-of-Thought、`reasoning_details` 或 provider 原始响应。
+
 ## Database Migration
 
 - 数据库只通过 `database/migrations/` 的追加式、有序 migration 变化。

@@ -15,12 +15,13 @@ import type { IAgentClient } from "./agent-client.js";
 export class MockAgentClient implements IAgentClient {
   async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
     const isCorrection = /不是|不对|并非|not really/i.test(request.message);
+    const message = isCorrection
+      ? "谢谢你纠正我。我会把这次纠正作为高优先级记忆，而不是直接给你贴标签。"
+      : "听起来你今天需要一点轻松的空间。我们可以先不分析，只慢一点聊。";
 
     return Promise.resolve({
       requestId: request.requestId,
-      message: isCorrection
-        ? "谢谢你纠正我。我会把这次纠正作为高优先级记忆，而不是直接给你贴标签。"
-        : "听起来你今天需要一点轻松的空间。我们可以先不分析，只慢一点聊。",
+      message,
       mode: isCorrection ? "mirror" : (request.requestedMode ?? "companion"),
       memoryCandidates: [
         {
@@ -35,6 +36,8 @@ export class MockAgentClient implements IAgentClient {
       ],
       personaPatchCandidates: [],
       relationshipCandidates: [],
+      cadence: "direct",
+      publicEvents: [{ type: "message", position: "final", text: message }],
       traceId: randomUUID(),
     });
   }

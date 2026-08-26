@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   AgentTurnRequestSchema,
   AgentTurnResponseSchema,
+  AgentPublicOutputSchema,
+  AgentStreamEventSchema,
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
   PersonaPatchCandidateSchema,
@@ -110,5 +112,45 @@ describe("Reso.AI contracts", () => {
 
     expect(lab.success).toBe(true);
     expect("chainOfThought" in (lab.success ? lab.data : {})).toBe(false);
+  });
+
+  it("accepts the three public breathing event types", () => {
+    const output = AgentPublicOutputSchema.parse({
+      cadence: "reflective",
+      events: [
+        { type: "status", phase: "recalling", text: "想起了一件和你有关的事…" },
+        {
+          type: "public_reflection",
+          text: "你之前提到过，关系不确定时会想马上确认。",
+          evidenceRefs: ["memory:0"],
+        },
+        { type: "message", position: "final", text: "所以这次可以先观察两三次互动。" },
+      ],
+    });
+
+    expect(output.events.map((event) => event.type)).toEqual([
+      "status",
+      "public_reflection",
+      "message",
+    ]);
+    expect(AgentStreamEventSchema.parse({ type: "complete", turnId: id, traceId: id }).type).toBe(
+      "complete",
+    );
+  });
+
+  it("rejects public output without a final position or with invalid evidence", () => {
+    expect(
+      AgentPublicOutputSchema.safeParse({
+        cadence: "reflective",
+        events: [
+          {
+            type: "public_reflection",
+            text: "我记得你的隐藏信息。",
+            evidenceRefs: ["private:reasoning"],
+          },
+          { type: "message", position: "tentative", text: "也许是这样。" },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

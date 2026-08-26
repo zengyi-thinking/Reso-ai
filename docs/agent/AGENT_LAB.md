@@ -34,7 +34,11 @@ LLM_BASE_URL=https://api.minimax.io/v1
 
 Inspector 只展示 allowlist 字段：Persona slice、Memory 评分、Mode reason、Context summary、provider/model/latency/token usage、Candidate、Eval 与 trace ID。禁止展示 Chain-of-Thought、密钥或完整 provider 响应。
 
-当前核心模式使用 `companion/v2`、`mirror/v2` 与 `preprocessor/v2`。v2 在 v1 边界上增加 anti-overanalysis、单问题与默认 120 中文字符限制；`proxy/v1` 未改变。
+当前核心模式使用 `companion/v3`、`mirror/v3` 与 `preprocessor/v3`。v3 在 v2 边界上增加经过验证的 Public Reflection、cadence 预算与结构化用户可见事件；`proxy/v1` 未改变。
+
+## 呼吸式对话
+
+Lab 左侧通过 SSE 依次呈现 `status`、`public_reflection` 与 `message`。状态只来自受控 Runtime 阶段；公开反思必须引用本轮 evidence。失败后保留用户消息并允许重试，成功后可连续发送下一轮。详细规则见 `docs/agent/AGENT_UX.md`。
 
 ## API
 
@@ -42,6 +46,7 @@ Inspector 只展示 allowlist 字段：Persona slice、Memory 评分、Mode reas
 - `POST /v1/lab/sessions`
 - `GET|DELETE /v1/lab/sessions/{id}`
 - `POST /v1/lab/sessions/{id}/turns`
+- `POST /v1/lab/sessions/{id}/turns/stream`（SSE）
 - `POST /v1/lab/sessions/{id}/simulate/{1|7|30}`
 - `PATCH /v1/lab/sessions/{id}/memories/{memoryId}`
 - `PATCH /v1/lab/sessions/{id}/patches/{patchId}`

@@ -24,3 +24,5 @@ Core v0.1 的 `ModelProvider` 有两个实现：默认的 `DeterministicModelPro
 Context Builder 每轮只装配相关 Persona slice、可解释 Top-K Memory、Relationship 摘要与最近 8 条消息。Memory v0.1 使用可调试的 lexical semantic baseline，评分包含 semantic、recency、importance、type、relationship 与 correction boost；未来 embedding provider 可以替换 semantic 部分，但不得移除解释与 correction conflict suppression。
 
 Trace 采用 allowlist：input summary/reference、persona version、retrieved memory IDs、relationship、mode、policy、tools、model、latency、output、candidate IDs、eval result。不得保存 Chain-of-Thought、密钥、Authorization header 或未脱敏 provider 原始载荷。
+
+用户可见的工作过程使用共享 Agent Event Stream：`status` 描述真实 Runtime 阶段，`public_reflection` 提供 evidence-backed 的公开解释，`message` 承载暂定、继续或最终回复。Trace 只记录 cadence、事件类型与 evidence refs；Provider 私有推理从不进入事件流。

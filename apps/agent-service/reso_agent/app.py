@@ -1,12 +1,20 @@
+import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter
 
 from reso_agent.contracts import (
     AgentReflectionRequest,
     AgentReflectionResponse,
+    AgentStatusEvent,
+    AgentStreamCompleteEvent,
+    AgentStreamErrorEvent,
+    AgentStreamEvent,
     AgentTurnRequest,
     AgentTurnResponse,
     LabMemoryUpdate,
@@ -35,6 +43,7 @@ app.add_middleware(
 )
 runtime = AgentRuntime()
 lab = LabWorkspace()
+_stream_event_adapter: TypeAdapter[AgentStreamEvent] = TypeAdapter(AgentStreamEvent)
 
 
 @app.get("/v1/health")
@@ -144,6 +153,76 @@ async def create_lab_turn(session_id: UUID, request: LabTurnRequest) -> LabTurn:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except (ValueError, ModelProviderError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.post("/v1/lab/sessions/{session_id}/turns/stream")
+async def stream_lab_turn(session_id: UUID, request: LabTurnRequest) -> StreamingResponse:
+    async def events() -> AsyncIterator[str]:
+        progress: asyncio.Queue[AgentStatusEvent] = asyncio.Queue()
+        emitted: list[str] = []
+        task = asyncio.create_task(
+            lab.run_turn(session_id, request, on_progress=progress.put_nowait)
+        )
+        try:
+            while not task.done():
+                try:
+                    event = await asyncio.wait_for(progress.get(), timeout=0.05)
+                except TimeoutError:
+                    continue
+                serialized = _stream_data(event)
+                emitted.append(serialized)
+                yield serialized
+            while not progress.empty():
+                event = progress.get_nowait()
+                serialized = _stream_data(event)
+                emitted.append(serialized)
+                yield serialized
+            turn = await task
+            for public_event in turn.public_events:
+                serialized = _stream_data(public_event)
+                if serialized in emitted:
+                    emitted.remove(serialized)
+                    continue
+                yield serialized
+            yield _stream_data(AgentStreamCompleteEvent(turn_id=turn.id, trace_id=turn.trace_id))
+        except KeyError:
+            yield _stream_data(
+                AgentStreamErrorEvent(
+                    code="LAB_SESSION_NOT_FOUND",
+                    text="这个测试会话已经不存在，请新建 Session。",
+                    retryable=False,
+                )
+            )
+        except ModelProviderError:
+            yield _stream_data(
+                AgentStreamErrorEvent(
+                    code="MODEL_PROVIDER_FAILED",
+                    text="Reso 这次没有连接上模型。你的消息还在，可以重新发送。",
+                    retryable=True,
+                )
+            )
+        except ValueError:
+            yield _stream_data(
+                AgentStreamErrorEvent(
+                    code="AGENT_OUTPUT_INVALID",
+                    text="Reso 没能整理好这次回复，请再试一次。",
+                    retryable=True,
+                )
+            )
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _stream_data(event: AgentStreamEvent) -> str:
+    payload = _stream_event_adapter.dump_json(event, by_alias=True).decode("utf-8")
+    return f"data: {payload}\n\n"
 
 
 @app.post(

@@ -9,6 +9,8 @@ const validResponse = {
   memoryCandidates: [],
   personaPatchCandidates: [],
   relationshipCandidates: [],
+  cadence: "direct",
+  publicEvents: [{ type: "message", position: "final", text: "我会先听你说。" }],
   traceId: "0198d4f3-6f1e-72b4-8bc9-3af746768b00",
 };
 

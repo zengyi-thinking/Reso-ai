@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from reso_agent.contracts import AgentTurnRequest
+from reso_agent.contracts import AgentPublicReflectionEvent, AgentTurnRequest
 from reso_agent.runtime.pipeline import AgentRuntime
 
 
@@ -21,6 +21,11 @@ async def test_scaffold_behavior_does_not_over_analyze_fatigue() -> None:
     )
 
     assert response.mode == "companion"
+    assert response.cadence == "direct"
+    assert not any(
+        isinstance(event, AgentPublicReflectionEvent)
+        for event in response.public_events
+    )
     assert "人格" not in response.message
     assert trace.policy_decision == "ALLOW"
 

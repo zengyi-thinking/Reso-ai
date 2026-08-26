@@ -79,6 +79,40 @@ def test_lab_memory_ablation_changes_replay_retrieval() -> None:
     assert correction["memoryCandidateIds"]
 
 
+def test_lab_stream_emits_public_events_and_persists_turn() -> None:
+    session = create_session()
+    session_id = session["id"]
+    with client.stream(
+        "POST",
+        f"/v1/lab/sessions/{session_id}/turns/stream",
+        json={"message": "她最近好像不太愿意跟我聊天了。"},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert '"type":"status"' in body
+    assert '"type":"message"' in body
+    assert '"type":"complete"' in body
+    updated = client.get(f"/v1/lab/sessions/{session_id}").json()
+    assert len(updated["turns"]) == 1
+    assert updated["turns"][0]["publicEvents"]
+
+
+def test_lab_supports_three_continuous_turns() -> None:
+    session = create_session()
+    session_id = session["id"]
+    counts = []
+    for message in ("今天还好吗？", "你记得我刚刚说什么吗？", "那我们继续聊聊。"):
+        response = client.post(
+            f"/v1/lab/sessions/{session_id}/turns",
+            json={"message": message},
+        )
+        assert response.status_code == 200
+        counts.append(response.json()["contextSummary"]["recentMessageCount"])
+
+    assert counts == [0, 2, 4]
+
+
 @pytest.mark.asyncio
 async def test_longitudinal_simulation_becomes_more_specific_after_correction() -> None:
     workspace = LabWorkspace()

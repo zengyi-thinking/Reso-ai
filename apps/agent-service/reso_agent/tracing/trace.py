@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from reso_agent.contracts import AgentMode
+from reso_agent.contracts import AgentMode, ConversationCadence
 from reso_agent.policy.disclosure import PolicyDecision
 
 
@@ -31,3 +31,6 @@ class TraceRecord(BaseModel):
     persona_candidate_ids: tuple[UUID, ...] = ()
     memory_candidate_count: int = Field(ge=0)
     persona_candidate_count: int = Field(ge=0)
+    cadence: ConversationCadence = ConversationCadence.DIRECT
+    public_event_types: tuple[str, ...] = ()
+    public_evidence_refs: tuple[str, ...] = ()

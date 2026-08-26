@@ -9,6 +9,91 @@ import {
   type SocialMissionResult,
 } from "./social.js";
 
+export const ConversationCadenceSchema = z.enum([
+  "direct",
+  "considered",
+  "reflective",
+  "reconsidered",
+]);
+export type ConversationCadence = z.infer<typeof ConversationCadenceSchema>;
+
+export const AgentStatusPhaseSchema = z.enum([
+  "understanding",
+  "recalling",
+  "noticing",
+  "composing",
+  "reconsidering",
+]);
+export type AgentStatusPhase = z.infer<typeof AgentStatusPhaseSchema>;
+
+export const AgentStatusEventSchema = z.object({
+  type: z.literal("status"),
+  phase: AgentStatusPhaseSchema,
+  text: z.string().min(1).max(80),
+});
+
+export const AgentPublicReflectionEventSchema = z.object({
+  type: z.literal("public_reflection"),
+  text: z.string().min(1).max(160),
+  evidenceRefs: z
+    .array(z.string().regex(/^(memory|persona):\d+$|^message:current$/))
+    .min(1)
+    .max(3),
+});
+
+export const AgentMessageEventSchema = z.object({
+  type: z.literal("message"),
+  position: z.enum(["tentative", "continuation", "final"]),
+  text: z.string().min(1).max(600),
+});
+
+export const AgentPublicEventSchema = z.discriminatedUnion("type", [
+  AgentStatusEventSchema,
+  AgentPublicReflectionEventSchema,
+  AgentMessageEventSchema,
+]);
+export type AgentPublicEvent = z.infer<typeof AgentPublicEventSchema>;
+
+export const AgentPublicOutputSchema = z
+  .object({
+    cadence: ConversationCadenceSchema,
+    events: z.array(AgentPublicEventSchema).min(1).max(5),
+  })
+  .superRefine((value, context) => {
+    const statuses = value.events.filter((event) => event.type === "status");
+    const reflections = value.events.filter((event) => event.type === "public_reflection");
+    const messages = value.events.filter((event) => event.type === "message");
+    if (!messages.some((event) => event.position === "final")) {
+      context.addIssue({ code: "custom", message: "public output requires a final message" });
+    }
+    if (statuses.length > 2 || reflections.length > 1 || messages.length > 2) {
+      context.addIssue({ code: "custom", message: "public output exceeds the breathing budget" });
+    }
+  });
+export type AgentPublicOutput = z.infer<typeof AgentPublicOutputSchema>;
+
+export const AgentStreamCompleteEventSchema = z.object({
+  type: z.literal("complete"),
+  turnId: UuidSchema,
+  traceId: UuidSchema,
+});
+
+export const AgentStreamErrorEventSchema = z.object({
+  type: z.literal("error"),
+  code: z.string().min(1),
+  text: z.string().min(1),
+  retryable: z.boolean(),
+});
+
+export const AgentStreamEventSchema = z.discriminatedUnion("type", [
+  AgentStatusEventSchema,
+  AgentPublicReflectionEventSchema,
+  AgentMessageEventSchema,
+  AgentStreamCompleteEventSchema,
+  AgentStreamErrorEventSchema,
+]);
+export type AgentStreamEvent = z.infer<typeof AgentStreamEventSchema>;
+
 export const AgentTurnRequestSchema = z.object({
   requestId: UuidSchema,
   userId: UuidSchema,
@@ -55,6 +140,8 @@ export const AgentTurnResponseSchema = z.object({
       confidence: z.number().min(0).max(1),
     }),
   ),
+  cadence: ConversationCadenceSchema.default("direct"),
+  publicEvents: z.array(AgentPublicEventSchema).default([]),
   traceId: UuidSchema,
 });
 export type AgentTurnResponse = z.infer<typeof AgentTurnResponseSchema>;

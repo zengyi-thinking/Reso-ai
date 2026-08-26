@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, alias_generators
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    alias_generators,
+    field_validator,
+    model_validator,
+)
 
 
 class ContractModel(BaseModel):
@@ -22,6 +30,94 @@ class AgentMode(StrEnum):
     MIRROR = "mirror"
     PREPROCESSOR = "preprocessor"
     PROXY = "proxy"
+
+
+class ConversationCadence(StrEnum):
+    DIRECT = "direct"
+    CONSIDERED = "considered"
+    REFLECTIVE = "reflective"
+    RECONSIDERED = "reconsidered"
+
+
+class AgentStatusPhase(StrEnum):
+    UNDERSTANDING = "understanding"
+    RECALLING = "recalling"
+    NOTICING = "noticing"
+    COMPOSING = "composing"
+    RECONSIDERING = "reconsidering"
+
+
+class AgentStatusEvent(ContractModel):
+    type: Literal["status"] = "status"
+    phase: AgentStatusPhase
+    text: str = Field(min_length=1, max_length=80)
+
+
+class AgentPublicReflectionEvent(ContractModel):
+    type: Literal["public_reflection"] = "public_reflection"
+    text: str = Field(min_length=1, max_length=160)
+    evidence_refs: list[str] = Field(min_length=1, max_length=3)
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def validate_evidence_refs(cls, value: list[str]) -> list[str]:
+        allowed = re.compile(r"^(memory|persona):\d+$|^message:current$")
+        if any(allowed.fullmatch(reference) is None for reference in value):
+            raise ValueError("invalid public evidence reference")
+        return value
+
+
+class AgentMessageEvent(ContractModel):
+    type: Literal["message"] = "message"
+    position: Literal["tentative", "continuation", "final"]
+    text: str = Field(min_length=1, max_length=600)
+
+
+AgentPublicEvent = Annotated[
+    AgentStatusEvent | AgentPublicReflectionEvent | AgentMessageEvent,
+    Field(discriminator="type"),
+]
+
+
+class AgentPublicOutput(ContractModel):
+    cadence: ConversationCadence
+    events: list[AgentPublicEvent] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def validate_breathing_budget(self) -> Self:
+        statuses = [event for event in self.events if isinstance(event, AgentStatusEvent)]
+        reflections = [
+            event for event in self.events if isinstance(event, AgentPublicReflectionEvent)
+        ]
+        messages = [event for event in self.events if isinstance(event, AgentMessageEvent)]
+        if not any(message.position == "final" for message in messages):
+            raise ValueError("public output requires a final message")
+        if len(statuses) > 2 or len(reflections) > 1 or len(messages) > 2:
+            raise ValueError("public output exceeds the breathing budget")
+        return self
+
+
+class AgentStreamCompleteEvent(ContractModel):
+    type: Literal["complete"] = "complete"
+    turn_id: UUID
+    trace_id: UUID
+
+
+class AgentStreamErrorEvent(ContractModel):
+    type: Literal["error"] = "error"
+    code: str
+    text: str
+    retryable: bool
+
+
+AgentStreamEvent = Annotated[
+    AgentStatusEvent
+    | AgentPublicReflectionEvent
+    | AgentMessageEvent
+    | AgentStreamCompleteEvent
+    | AgentStreamErrorEvent,
+    Field(discriminator="type"),
+]
 
 
 class MemoryType(StrEnum):
@@ -94,7 +190,7 @@ class RelationshipUpdateCandidate(ContractModel):
 
 class RecentMessage(ContractModel):
     id: UUID
-    role: str
+    role: Literal["user", "agent"]
     content: str
 
 
@@ -135,6 +231,8 @@ class AgentTurnResponse(ContractModel):
     memory_candidates: list[MemoryCandidate]
     persona_patch_candidates: list[PersonaPatchCandidate]
     relationship_candidates: list[RelationshipUpdateCandidate]
+    cadence: ConversationCadence = ConversationCadence.DIRECT
+    public_events: list[AgentPublicEvent] = Field(default_factory=list)
     trace_id: UUID
 
 
@@ -228,6 +326,8 @@ class LabTurn(ContractModel):
     memory_candidate_ids: list[UUID]
     persona_patch_candidates: list[PersonaPatchCandidate]
     relationship_candidates: list[RelationshipUpdateCandidate]
+    cadence: ConversationCadence
+    public_events: list[AgentPublicEvent]
     eval: list[EvalCheck]
     trace_id: UUID
     replay_of: UUID | None = None

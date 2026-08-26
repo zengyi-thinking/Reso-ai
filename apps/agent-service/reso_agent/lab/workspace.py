@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from reso_agent.contracts import (
     AgentAuthorizedContext,
+    AgentStatusEvent,
     AgentTurnRequest,
     EvalCheck,
     LabMemoryUpdate,
@@ -89,7 +91,13 @@ class LabWorkspace:
         self._get(session_id)
         del self._sessions[session_id]
 
-    async def run_turn(self, session_id: UUID, request: LabTurnRequest) -> LabTurn:
+    async def run_turn(
+        self,
+        session_id: UUID,
+        request: LabTurnRequest,
+        *,
+        on_progress: Callable[[AgentStatusEvent], None] | None = None,
+    ) -> LabTurn:
         state = self._get(session_id)
         replay_of = request.replay_turn_id
         message = request.message
@@ -125,7 +133,17 @@ class LabWorkspace:
                 requested_mode=request.requested_mode,
                 persona_version_id=state.persona_version_id,
                 context=context,
-            )
+            ),
+            recent_cadences=tuple(turn.cadence for turn in state.turns[-6:]),
+            recent_public_memory_ids=tuple(
+                turn.retrieved_memories[0].memory.id
+                for turn in state.turns[-4:]
+                for event in turn.public_events
+                if hasattr(event, "evidence_refs")
+                and "memory:0" in event.evidence_refs
+                and turn.retrieved_memories
+            ),
+            on_progress=on_progress,
         )
         memory_ids = self._commit_lab_memories(state, details, message_id)
         state.pending_patches.extend(details.response.persona_patch_candidates)
@@ -145,6 +163,8 @@ class LabWorkspace:
             memory_candidate_ids=memory_ids,
             persona_patch_candidates=details.response.persona_patch_candidates,
             relationship_candidates=details.response.relationship_candidates,
+            cadence=details.response.cadence,
+            public_events=details.response.public_events,
             eval=self._eval(details),
             trace_id=details.response.trace_id,
             replay_of=replay_of,

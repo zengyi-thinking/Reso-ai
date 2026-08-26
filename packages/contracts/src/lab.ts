@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentPublicEventSchema, ConversationCadenceSchema } from "./agent.js";
 import { AgentModeSchema, IsoDateTimeSchema, UuidSchema } from "./common.js";
 import { MemoryContextSchema, RetrievalScoreSchema } from "./memory.js";
 import { PersonaContentSchema, PersonaPatchCandidateSchema } from "./persona.js";
@@ -55,6 +56,8 @@ export const LabTurnSchema = z.object({
   relationshipCandidates: z.array(
     z.object({ summary: z.string(), reason: z.string(), confidence: z.number() }),
   ),
+  cadence: ConversationCadenceSchema,
+  publicEvents: z.array(AgentPublicEventSchema),
   eval: z.array(
     z.object({ id: z.string().min(1), passed: z.boolean(), detail: z.string().min(1) }),
   ),

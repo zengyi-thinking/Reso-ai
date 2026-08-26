@@ -170,10 +170,18 @@ class MiniMaxModelProvider:
 
     def _messages(self, request: ModelRequest) -> list[dict[str, str]]:
         messages = [
-            {"role": item.role, "content": item.content} for item in request.recent_messages
+            {"role": self._provider_role(item.role), "content": item.content}
+            for item in request.recent_messages
         ]
         messages.append({"role": "user", "content": request.user_message})
         return messages
+
+    def _provider_role(self, role: str) -> str:
+        if role == "user":
+            return "user"
+        if role == "agent":
+            return "assistant"
+        raise ModelProviderError(f"Unsupported conversation role: {role}")
 
     async def _openai(self, request: ModelRequest) -> tuple[str, int | None, int | None]:
         url = f"{self._config.base_url}/chat/completions"
