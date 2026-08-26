@@ -3,6 +3,7 @@ export * from "./common.js";
 export * from "./consent.js";
 export * from "./conversation.js";
 export * from "./events.js";
+export * from "./lab.js";
 export * from "./memory.js";
 export * from "./persona.js";
 export * from "./recommendation.js";

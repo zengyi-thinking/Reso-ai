@@ -34,6 +34,7 @@ export class MockAgentClient implements IAgentClient {
         },
       ],
       personaPatchCandidates: [],
+      relationshipCandidates: [],
       traceId: randomUUID(),
     });
   }

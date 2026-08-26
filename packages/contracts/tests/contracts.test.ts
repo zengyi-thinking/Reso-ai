@@ -7,6 +7,7 @@ import {
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
   PersonaPatchCandidateSchema,
+  LabSessionSchema,
 } from "../src/index.js";
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
@@ -90,5 +91,24 @@ describe("Reso.AI contracts", () => {
     const fixture = readFixture("agent-turn.invalid.json");
     expect(AgentTurnRequestSchema.safeParse(fixture.request).success).toBe(false);
     expect(AgentTurnResponseSchema.safeParse(fixture.response).success).toBe(false);
+  });
+
+  it("keeps Lab model metadata and trace free of private reasoning fields", () => {
+    const lab = LabSessionSchema.safeParse({
+      id,
+      user: { id, slug: "user-alice", displayName: "Alice", personaVersion: "1.0" },
+      provider: "deterministic",
+      createdAt: "2026-08-26T08:00:00+08:00",
+      persona: {
+        version: "1.0",
+        content: {},
+      },
+      pendingPatches: [],
+      memories: [],
+      turns: [],
+    });
+
+    expect(lab.success).toBe(true);
+    expect("chainOfThought" in (lab.success ? lab.data : {})).toBe(false);
   });
 });

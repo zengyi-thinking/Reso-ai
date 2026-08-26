@@ -1,152 +1,173 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import UUID, uuid4
 
+from reso_agent.context.builder import BuiltContext, ContextBuilder
 from reso_agent.contracts import (
+    AgentAuthorizedContext,
     AgentMode,
     AgentTurnRequest,
     AgentTurnResponse,
-    MemoryCandidate,
-    MemoryType,
+    ModelMetadata,
+)
+from reso_agent.models.provider import (
+    DeterministicModelProvider,
+    ModelProvider,
+    ModelRequest,
 )
 from reso_agent.policy.disclosure import DisclosurePolicy, DisclosureResult, PolicyDecision
+from reso_agent.reflection.service import ReflectionResult, ReflectionService
+from reso_agent.runtime.mode_router import ModeRouter, ModeSelection, TurnPerception
 from reso_agent.tracing.trace import TraceRecord
 
-
-@dataclass(frozen=True)
-class TurnPerception:
-    is_correction: bool
+_PROMPT_ROOT = Path(__file__).parents[1] / "prompts"
 
 
 @dataclass(frozen=True)
-class AuthorizedContext:
-    persona_version_id: UUID | None
-    retrieved_memory_ids: tuple[UUID, ...]
-    active_proxy_consent: bool
-
-
-@dataclass(frozen=True)
-class RuntimeRoute:
-    mode: AgentMode
-    prompt_version: str
-    model_route: str
-    tool_names: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class TurnPlan:
-    route: RuntimeRoute
-    policy: DisclosureResult
-    message: str
-    memory_candidates: tuple[MemoryCandidate, ...]
-
-
-class ModeRouter:
-    """Select a bounded mode and versioned prompt independently from provider routing."""
-
-    def route(self, request: AgentTurnRequest, perception: TurnPerception) -> RuntimeRoute:
-        mode = request.requested_mode or (
-            AgentMode.MIRROR if perception.is_correction else AgentMode.COMPANION
-        )
-        return RuntimeRoute(
-            mode=mode,
-            prompt_version=f"{mode.value}/v1",
-            model_route="deterministic-bootstrap",
-            tool_names=(),
-        )
+class RuntimeTurnDetails:
+    response: AgentTurnResponse
+    trace: TraceRecord
+    perception: TurnPerception
+    selection: ModeSelection
+    context: BuiltContext
+    model: ModelMetadata
+    reflection: ReflectionResult
 
 
 class AgentRuntime:
-    """Typed deterministic pipeline; no Product DB mutation or paid model call occurs here."""
+    """Controlled runtime: authorized reads in, candidates out, no Product DB writes."""
 
     def __init__(
         self,
+        *,
+        model_provider: ModelProvider | None = None,
         policy: DisclosurePolicy | None = None,
         mode_router: ModeRouter | None = None,
+        context_builder: ContextBuilder | None = None,
+        reflection: ReflectionService | None = None,
     ) -> None:
+        self._model_provider = model_provider or DeterministicModelProvider()
         self._policy = policy or DisclosurePolicy()
         self._mode_router = mode_router or ModeRouter()
+        self._context_builder = context_builder or ContextBuilder()
+        self._reflection = reflection or ReflectionService()
 
     async def turn(self, request: AgentTurnRequest) -> tuple[AgentTurnResponse, TraceRecord]:
-        perception = self._perceive(request)
-        context = self._build_authorized_context(request)
-        plan = self._plan(request, perception, context)
-        return self._post_turn(request, context, plan)
+        details = await self.turn_with_details(request)
+        return details.response, details.trace
 
-    def _perceive(self, request: AgentTurnRequest) -> TurnPerception:
-        is_correction = any(
-            marker in request.message.lower() for marker in ("不是", "不对", "not really")
-        )
-        return TurnPerception(is_correction=is_correction)
-
-    def _build_authorized_context(self, request: AgentTurnRequest) -> AuthorizedContext:
-        # A future Product API read port may populate these fields after authorization.
-        return AuthorizedContext(
-            persona_version_id=request.persona_version_id,
-            retrieved_memory_ids=(),
-            active_proxy_consent=False,
-        )
-
-    def _plan(
-        self,
-        request: AgentTurnRequest,
-        perception: TurnPerception,
-        context: AuthorizedContext,
-    ) -> TurnPlan:
-        route = self._mode_router.route(request, perception)
+    async def turn_with_details(self, request: AgentTurnRequest) -> RuntimeTurnDetails:
+        perception = self._mode_router.perceive(request.message)
+        selection = self._mode_router.route(request, perception)
+        authorized = request.context or AgentAuthorizedContext()
+        context = self._context_builder.build(message=request.message, authorized=authorized)
         policy = self._policy.decide(
-            proxy_requested=route.mode is AgentMode.PROXY,
-            active_consent=context.active_proxy_consent,
+            proxy_requested=selection.mode is AgentMode.PROXY,
+            active_consent=False,
         )
+        version = "v1" if selection.mode is AgentMode.PROXY else "v2"
+        prompt_version = f"{selection.mode.value}/{version}"
 
         if policy.decision is PolicyDecision.ASK_USER:
             message = "在代表你行动之前，我需要你明确授权这次代理范围。"
-        elif perception.is_correction:
-            message = "谢谢你纠正我。我会记住这次纠正，但不会把一次表达直接写成人格结论。"
+            model = ModelMetadata(
+                provider="policy",
+                model="not-called",
+                latency_ms=0,
+                prompt_tokens=None,
+                completion_tokens=None,
+            )
+            reflection = ReflectionResult((), (), ())
         else:
-            message = "听起来你今天需要一点轻松的空间。我们可以先不分析，只慢一点聊。"
+            mode_prompt = (_PROMPT_ROOT / selection.mode.value / f"{version}.md").read_text(
+                encoding="utf-8"
+            )
+            model_response = await self._model_provider.generate(
+                ModelRequest(
+                    mode=selection.mode,
+                    system_prompt=(
+                        f"{context.system_context}\n\n[Mode Contract]\n{mode_prompt}\n\n"
+                        "Never reveal private chain-of-thought. "
+                        "Return only the user-facing response. Follow the length limit strictly."
+                    ),
+                    user_message=request.message,
+                    recent_messages=context.recent_messages,
+                    memory_summaries=tuple(
+                        item.memory.summary for item in context.retrieved_memories
+                    ),
+                    is_correction=perception.is_correction,
+                    no_analysis=perception.no_analysis,
+                )
+            )
+            message = model_response.content
+            model = model_response.metadata
+            reflection = self._reflection.reflect(
+                request=request,
+                is_correction=perception.is_correction,
+                retrieved=context.retrieved_memories,
+            )
 
-        candidate = MemoryCandidate(
-            type=(MemoryType.CORRECTION if perception.is_correction else MemoryType.EPISODIC),
-            summary=(
-                "User explicitly corrected a prior interpretation."
-                if perception.is_correction
-                else "User shared a current experience."
-            ),
-            confidence=0.95 if perception.is_correction else 0.7,
-            requires_review=perception.is_correction,
-        )
-        return TurnPlan(
-            route=route,
-            policy=policy,
-            message=message,
-            memory_candidates=(candidate,),
-        )
-
-    def _post_turn(
-        self,
-        request: AgentTurnRequest,
-        context: AuthorizedContext,
-        plan: TurnPlan,
-    ) -> tuple[AgentTurnResponse, TraceRecord]:
         trace_id = uuid4()
         response = AgentTurnResponse(
             request_id=request.request_id,
-            message=plan.message,
-            mode=plan.route.mode,
-            memory_candidates=list(plan.memory_candidates),
-            persona_patch_candidates=[],
+            message=message,
+            mode=selection.mode,
+            memory_candidates=list(reflection.memory_candidates),
+            persona_patch_candidates=list(reflection.persona_patch_candidates),
+            relationship_candidates=list(reflection.relationship_candidates),
             trace_id=trace_id,
         )
-        trace = TraceRecord(
+        trace = self._trace(
+            request=request,
+            trace_id=trace_id,
+            selection=selection,
+            context=context,
+            policy=policy,
+            model=model,
+            prompt_version=prompt_version,
+            response=response,
+        )
+        return RuntimeTurnDetails(
+            response=response,
+            trace=trace,
+            perception=perception,
+            selection=selection,
+            context=context,
+            model=model,
+            reflection=reflection,
+        )
+
+    def _trace(
+        self,
+        *,
+        request: AgentTurnRequest,
+        trace_id: UUID,
+        selection: ModeSelection,
+        context: BuiltContext,
+        policy: DisclosureResult,
+        model: ModelMetadata,
+        prompt_version: str,
+        response: AgentTurnResponse,
+    ) -> TraceRecord:
+        return TraceRecord(
             trace_id=trace_id,
             request_id=request.request_id,
-            mode=plan.route.mode,
-            policy_decision=plan.policy.decision,
-            prompt_version=plan.route.prompt_version,
-            model_route=plan.route.model_route,
-            tool_names=plan.route.tool_names,
-            retrieved_memory_ids=context.retrieved_memory_ids,
+            mode=selection.mode,
+            mode_reason=selection.reason,
+            policy_decision=policy.decision,
+            policy_reason=policy.reason_code,
+            prompt_version=prompt_version,
+            model_route=model.provider,
+            model=model.model,
+            latency_ms=model.latency_ms,
+            prompt_tokens=model.prompt_tokens,
+            completion_tokens=model.completion_tokens,
+            persona_version=context.selected_persona.version,
+            persona_fields=tuple(context.selected_persona.fields),
+            retrieved_memory_ids=tuple(context.summary.memory_ids),
             memory_candidate_count=len(response.memory_candidates),
             persona_candidate_count=len(response.persona_patch_candidates),
+            persona_candidate_ids=tuple(item.id for item in response.persona_patch_candidates),
         )
-        return response, trace

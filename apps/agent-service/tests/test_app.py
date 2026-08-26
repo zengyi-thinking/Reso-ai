@@ -35,9 +35,10 @@ def test_turn_records_correction_without_persona_mutation() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["mode"] == "mirror"
+    assert payload["mode"] == "companion"
     assert payload["memoryCandidates"][0]["type"] == "correction"
     assert payload["personaPatchCandidates"] == []
+    assert payload["relationshipCandidates"] == []
 
 
 def test_proxy_fails_closed_without_consent() -> None:

@@ -21,6 +21,27 @@ export const MemorySchema = z.object({
 });
 export type Memory = z.infer<typeof MemorySchema>;
 
+export const MemoryContextSchema = MemorySchema.extend({
+  importance: ConfidenceSchema.default(0.5),
+  relationshipRelevance: ConfidenceSchema.default(0),
+  topics: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
+  conflictsWith: z.array(UuidSchema).default([]),
+});
+export type MemoryContext = z.infer<typeof MemoryContextSchema>;
+
+export const RetrievalScoreSchema = z.object({
+  semantic: z.number().min(0),
+  recency: z.number().min(0),
+  importance: z.number().min(0),
+  type: z.number().min(0),
+  relationship: z.number().min(0),
+  correctionBoost: z.number().min(0),
+  final: z.number().min(0),
+  reason: z.string().min(1),
+});
+export type RetrievalScore = z.infer<typeof RetrievalScoreSchema>;
+
 export const MemoryCandidateSchema = z.object({
   type: MemoryTypeSchema,
   summary: z.string().min(1),

@@ -8,6 +8,7 @@ const validResponse = {
   mode: "companion",
   memoryCandidates: [],
   personaPatchCandidates: [],
+  relationshipCandidates: [],
   traceId: "0198d4f3-6f1e-72b4-8bc9-3af746768b00",
 };
 

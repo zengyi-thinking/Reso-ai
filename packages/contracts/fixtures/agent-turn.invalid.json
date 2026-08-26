@@ -9,6 +9,7 @@
     "mode": "unbounded",
     "memoryCandidates": [],
     "personaPatchCandidates": [],
+    "relationshipCandidates": [],
     "traceId": "not-a-uuid"
   }
 }
