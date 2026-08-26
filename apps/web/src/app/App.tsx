@@ -3,6 +3,7 @@ import { AgentChatPage } from "../features/agent-chat/AgentChatPage.js";
 import { ExplorePage } from "../features/explore/ExplorePage.js";
 import { JourneyPage } from "../features/journey/JourneyPage.js";
 import { WelcomePage } from "../features/onboarding/WelcomePage.js";
+import { PatchReviewPage } from "../features/persona/PatchReviewPage.js";
 import { PersonaPage } from "../features/persona/PersonaPage.js";
 import { ProfilePage } from "../features/profile/ProfilePage.js";
 import { RelationshipsPage } from "../features/relationships/RelationshipsPage.js";
@@ -33,6 +34,7 @@ export function App(): React.JSX.Element {
           <Route path="/" element={<WelcomePage />} />
           <Route path="/journey" element={<JourneyPage />} />
           <Route path="/persona" element={<PersonaPage />} />
+          <Route path="/patch-review" element={<PatchReviewPage />} />
           <Route path="/agent-chat" element={<AgentChatPage />} />
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/relationships" element={<RelationshipsPage />} />

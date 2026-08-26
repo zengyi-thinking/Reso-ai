@@ -1,0 +1,28 @@
+name: reso-ai-database-test
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: reso
+      POSTGRES_USER: reso
+      POSTGRES_PASSWORD: reso
+    volumes:
+      - database-test-data:/var/lib/postgresql
+      - ../../database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U reso -d reso"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:8.2-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  database-test-data:

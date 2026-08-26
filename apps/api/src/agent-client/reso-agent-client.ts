@@ -1,6 +1,7 @@
 import {
   AgentReflectionResponseSchema,
   AgentTurnResponseSchema,
+  ApiErrorSchema,
   PersonaVersionSchema,
   SocialMissionResultSchema,
   type AgentReflectionRequest,
@@ -15,6 +16,17 @@ import {
 } from "@reso/contracts";
 import type { z } from "zod";
 import type { IAgentClient } from "./agent-client.js";
+
+export class AgentClientError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "AgentClientError";
+  }
+}
 
 export class ResoAgentClient implements IAgentClient {
   constructor(private readonly baseUrl: string) {}
@@ -56,7 +68,13 @@ export class ResoAgentClient implements IAgentClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Reso Agent request failed with status ${response.status}`);
+      const payload: unknown = await response.json().catch(() => null);
+      const parsed = ApiErrorSchema.safeParse(payload);
+      throw new AgentClientError(
+        parsed.success ? parsed.data.error.message : "Reso Agent request failed.",
+        parsed.success ? parsed.data.error.code : "invalid_agent_error",
+        response.status,
+      );
     }
 
     return schema.parse(await response.json());

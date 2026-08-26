@@ -1,0 +1,14 @@
+{
+  "request": {
+    "requestId": "not-a-uuid",
+    "message": ""
+  },
+  "response": {
+    "requestId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "message": "",
+    "mode": "unbounded",
+    "memoryCandidates": [],
+    "personaPatchCandidates": [],
+    "traceId": "not-a-uuid"
+  }
+}

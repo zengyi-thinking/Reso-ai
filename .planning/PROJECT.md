@@ -14,19 +14,19 @@ Reso.AI 必须能够在用户明确知情和控制下，把 Experience 转化为
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] 完成根仓库与两套独立 reference repo 审计，并明确可复用内容、目标架构和渐进迁移方式。
+- [x] 建立 React + TypeScript + Vite Web、Node.js + TypeScript REST API、Python + FastAPI Agent Service 的 monorepo 基线。
+- [x] 建立 Contract First 的共享类型和校验契约，覆盖 Agent、Persona、Memory、Conversation、Relationship、Social、Consent、Recommendation 与事件。
+- [x] 建立 PostgreSQL + pgvector + Redis 的数据库 migration/schema/seed/test fixture 骨架。
+- [x] 建立可通过 `AGENT_PROVIDER=mock` 与真实 Agent Service 无缝切换的 `IAgentClient`、`MockAgentClient` 和 `ResoAgentClient`。
+- [x] 建立遵循 Agent/Service 边界的 FastAPI 端点、运行管线、Mode、Policy、Prompt 和 tracing 骨架。
+- [x] 建立基础 Web、Worker、Agent Lab、Eval、CI、本地开发、测试与文档体系。
+- [x] 所有工程检查可运行：install、format、lint、typecheck、unit/contract test、build、Python lint/typecheck/test、agent smoke eval。
+- [x] 根目录和各服务 scoped `AGENTS.md` 明确架构、职责、禁区和 Definition of Done。
 
 ### Active
 
-- [ ] 完成根仓库与两套独立 reference repo 审计，并明确可复用内容、目标架构和渐进迁移方式。
-- [ ] 建立 React + TypeScript + Vite Web、Node.js + TypeScript REST API、Python + FastAPI Agent Service 的 monorepo 基线。
-- [ ] 建立 Contract First 的共享类型和校验契约，覆盖 Agent、Persona、Memory、Conversation、Relationship、Social、Consent、Recommendation 与事件。
-- [ ] 建立 PostgreSQL + pgvector + Redis 的数据库 migration/schema/seed/test fixture 骨架。
-- [ ] 建立可通过 `AGENT_PROVIDER=mock` 与真实 Agent Service 无缝切换的 `IAgentClient`、`MockAgentClient` 和 `ResoAgentClient`。
-- [ ] 建立遵循 Agent/Service 边界的 FastAPI 端点、运行管线、Mode、Policy、Prompt 和 tracing 骨架。
-- [ ] 建立基础 Web、Worker、Agent Lab、Eval、CI、本地开发、测试与文档体系。
-- [ ] 所有工程检查可运行：install、format、lint、typecheck、unit/contract test、build、Python lint/typecheck/test、agent smoke eval。
-- [ ] 根目录和各服务 scoped `AGENTS.md` 明确架构、职责、禁区和 Definition of Done。
+(None — Project Bootstrap 已验收；下一阶段工作由 Phase 2 requirements 管理。)
 
 ### Out of Scope
 

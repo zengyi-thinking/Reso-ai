@@ -5,12 +5,12 @@
   "type": "module",
   "main": "./dist/src/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "lint": "eslint src tests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run tests"
+    "test": "vitest run tests/app.test.ts tests/agent-client.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

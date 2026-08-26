@@ -1,12 +1,23 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   AgentTurnRequestSchema,
+  AgentTurnResponseSchema,
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
   PersonaPatchCandidateSchema,
 } from "../src/index.js";
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
+const fixtureDirectory = fileURLToPath(new URL("../fixtures/", import.meta.url));
+
+function readFixture(name: string): { request: unknown; response: unknown } {
+  return JSON.parse(readFileSync(`${fixtureDirectory}/${name}`, "utf8")) as {
+    request: unknown;
+    response: unknown;
+  };
+}
 
 describe("Reso.AI contracts", () => {
   it("accepts a valid agent turn without exposing provider details", () => {
@@ -67,5 +78,17 @@ describe("Reso.AI contracts", () => {
         reasonCode: "explicit-consent-required",
       }).decision,
     ).toBe("ASK_USER");
+  });
+
+  it("accepts the shared valid AgentTurn golden fixture", () => {
+    const fixture = readFixture("agent-turn.valid.json");
+    expect(AgentTurnRequestSchema.safeParse(fixture.request).success).toBe(true);
+    expect(AgentTurnResponseSchema.safeParse(fixture.response).success).toBe(true);
+  });
+
+  it("rejects the shared invalid AgentTurn golden fixture", () => {
+    const fixture = readFixture("agent-turn.invalid.json");
+    expect(AgentTurnRequestSchema.safeParse(fixture.request).success).toBe(false);
+    expect(AgentTurnResponseSchema.safeParse(fixture.response).success).toBe(false);
   });
 });

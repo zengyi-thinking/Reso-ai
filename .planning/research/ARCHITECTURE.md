@@ -99,7 +99,7 @@ evals + agent-lab ──► dev-only Agent experimentation, never prod truth
 | `tests/contract`         | Cross-runtime consumer/provider compatibility                                                                           | built artifacts and local stub services                                                                                         | Assert private implementation details                                                | Shared                   |
 | `tests/integration`      | Product state transitions, outbox/worker flow                                                                           | API, DB, Redis, mock Agent                                                                                                      | Require real model key                                                               | Backend/shared           |
 | `tests/e2e`              | Critical user-visible flow                                                                                              | Web + API + mock Agent                                                                                                          | Cover every branch during Bootstrap                                                  | Shared                   |
-| `references/*`           | Independent read-only upstream prototypes and migration evidence                                                        | Their own isolated dependencies/Git history                                                                                      | Join the root workspace or be formatted/rewritten by root tooling                    | Migration-only           |
+| `references/*`           | Independent read-only upstream prototypes and migration evidence                                                        | Their own isolated dependencies/Git history                                                                                     | Join the root workspace or be formatted/rewritten by root tooling                    | Migration-only           |
 
 ### Workspace dependency direction
 
@@ -554,15 +554,15 @@ Minimum observability uses the same `correlationId` from browser/API through out
 
 ## Confidence Assessment
 
-| Area                               | Confidence | Notes                                                                                                  |
-| ---------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| Service boundaries                 | HIGH       | Directly mandated by project principles and implementable with process/credential controls             |
-| Monorepo dependency direction      | HIGH       | Standard workspace boundaries; official pnpm behavior supports explicit local links/cycle prevention   |
-| Data ownership                     | HIGH       | Derived directly from “Agent Suggests, Service Commits” and first closed-loop invariants               |
-| Event/outbox design                | HIGH       | Official AWS guidance verifies dual-write risk/outbox/idempotency; Redis docs verify Streams semantics |
-| Cross-language contract generation | MEDIUM     | OpenAPI/JSON Schema is sound; exact generator/tooling must be validated by Stack implementation        |
+| Area                               | Confidence  | Notes                                                                                                                                  |
+| ---------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Service boundaries                 | HIGH        | Directly mandated by project principles and implementable with process/credential controls                                             |
+| Monorepo dependency direction      | HIGH        | Standard workspace boundaries; official pnpm behavior supports explicit local links/cycle prevention                                   |
+| Data ownership                     | HIGH        | Derived directly from “Agent Suggests, Service Commits” and first closed-loop invariants                                               |
+| Event/outbox design                | HIGH        | Official AWS guidance verifies dual-write risk/outbox/idempotency; Redis docs verify Streams semantics                                 |
+| Cross-language contract generation | MEDIUM      | OpenAPI/JSON Schema is sound; exact generator/tooling must be validated by Stack implementation                                        |
 | Existing-code migration            | MEDIUM-HIGH | Two runnable prototypes, 106 tests and 98 image assets are present; license/provenance and adapter cost still require per-slice review |
-| 10K/1M scaling                     | LOW–MEDIUM | Presented as trigger-based evolution, not capacity promise; no workload measurements exist             |
+| 10K/1M scaling                     | LOW–MEDIUM  | Presented as trigger-based evolution, not capacity promise; no workload measurements exist                                             |
 
 ## Sources
 

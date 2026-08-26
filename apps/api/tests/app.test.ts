@@ -42,6 +42,18 @@ describe("Reso Product API", () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ error: "invalid_request" });
+    expect(response.json()).toMatchObject({
+      error: { code: "invalid_request", message: expect.any(String) },
+    });
+  });
+
+  it("uses the stable error envelope for unknown routes", async () => {
+    app = await buildApp({ agentClient: new MockAgentClient() });
+    const response = await app.inject({ method: "GET", url: "/v1/not-real" });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: { code: "route_not_found", message: "The requested route does not exist." },
+    });
   });
 });

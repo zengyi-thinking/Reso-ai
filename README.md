@@ -96,6 +96,7 @@ pnpm python:lint
 pnpm python:typecheck
 pnpm python:test
 pnpm eval:smoke
+pnpm test:database
 pnpm check
 ```
 
@@ -113,6 +114,7 @@ CI 默认只使用 Mock 和 deterministic eval，不调用付费模型。
 ## Documentation
 
 - [Current State](docs/architecture/CURRENT_STATE.md)
+- [Foundation Verification](docs/architecture/FOUNDATION_VERIFICATION.md)
 - [Target Architecture](docs/architecture/TARGET_ARCHITECTURE.md)
 - [Service Boundaries](docs/architecture/SERVICE_BOUNDARIES.md)
 - [Product Vision](docs/product/PRODUCT_VISION.md)

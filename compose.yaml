@@ -10,10 +10,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - reso-postgres:/var/lib/postgresql/data
+      - reso-postgres:/var/lib/postgresql
       - ./database/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reso -d reso"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U reso -d reso"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -38,6 +38,17 @@ services:
       TRACE_ENABLED: "false"
     ports:
       - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
 
   api:
     build:
@@ -53,13 +64,24 @@ services:
       TRACE_ENABLED: "false"
     ports:
       - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       agent-service:
-        condition: service_started
+        condition: service_healthy
 
   web:
     build:
@@ -67,8 +89,14 @@ services:
       dockerfile: infra/docker/web.Dockerfile
     ports:
       - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   reso-postgres:

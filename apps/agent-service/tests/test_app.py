@@ -1,10 +1,16 @@
+import json
+from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from reso_agent.app import app
+from reso_agent.contracts import AgentTurnRequest, AgentTurnResponse
 
 client = TestClient(app)
+FIXTURE_DIRECTORY = Path(__file__).parents[3] / "packages" / "contracts" / "fixtures"
 
 
 def test_health() -> None:
@@ -51,3 +57,21 @@ def test_proxy_fails_closed_without_consent() -> None:
 
     assert response.status_code == 200
     assert "明确授权" in response.json()["message"]
+
+
+def test_shared_valid_agent_turn_fixture_matches_python_contract() -> None:
+    fixture = json.loads((FIXTURE_DIRECTORY / "agent-turn.valid.json").read_text(encoding="utf-8"))
+    request = AgentTurnRequest.model_validate(fixture["request"])
+    response = AgentTurnResponse.model_validate(fixture["response"])
+    assert request.message
+    assert response.mode == "mirror"
+
+
+def test_shared_invalid_agent_turn_fixture_is_rejected() -> None:
+    fixture = json.loads(
+        (FIXTURE_DIRECTORY / "agent-turn.invalid.json").read_text(encoding="utf-8")
+    )
+    with pytest.raises(ValidationError):
+        AgentTurnRequest.model_validate(fixture["request"])
+    with pytest.raises(ValidationError):
+        AgentTurnResponse.model_validate(fixture["response"])

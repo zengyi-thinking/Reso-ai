@@ -7,6 +7,16 @@
     },
     "dev": {
       "dependsOn": ["^build"],
+      "env": [
+        "APP_ENV",
+        "API_PORT",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "AGENT_PROVIDER",
+        "AGENT_SERVICE_URL",
+        "TRACE_ENABLED",
+        "LOG_LEVEL"
+      ],
       "cache": false,
       "persistent": true
     },

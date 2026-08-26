@@ -6,8 +6,8 @@ export function PersonaPage(): React.JSX.Element {
       eyebrow="Personal Manual · Draft"
       title="这不是关于你的定论"
       description="它是一份可以解释、修改、补充和持续演进的理解草稿。任何 Persona Patch 都需要你的确认。"
-      nextPath="/agent-chat"
-      nextLabel="去见你的 Reso Agent"
+      nextPath="/patch-review"
+      nextLabel="看看理解如何被修正"
     />
   );
 }

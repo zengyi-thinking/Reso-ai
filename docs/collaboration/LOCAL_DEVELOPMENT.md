@@ -26,9 +26,17 @@ uv run --project apps/agent-service uvicorn reso_agent.app:app --reload --port 8
 
 根 `pnpm dev` 会先 build shared packages，再并行启动 Web/API/Worker/Agent Lab。默认 API 使用 Mock Agent；设置 `AGENT_PROVIDER=reso-agent` 才调用本地 FastAPI。
 
+## 数据库与事件接缝验证
+
+```bash
+pnpm test:database
+```
+
+该命令使用独立 Compose project 创建临时 PostgreSQL/pgvector 与 Redis，依次验证追加式 migration、合成 seed、event outbox/消费/死信表和 Redis 健康状态，并在结束时删除该临时 project 的 volume。它不会复用或删除日常开发的 `reso-ai` volume。
+
 ## 常见问题
 
 - `.env` 不提交；浏览器不得出现 `LLM_API_KEY`。
-- 新数据库卷只在首次初始化时自动执行 migration；已有卷需要显式 migration runner（Stage 1 待实现）。
+- 新数据库卷只在首次初始化时自动执行 migration；`pnpm test:database` 用于验证干净 schema。对已有开发/生产卷执行增量 migration 的发布 runner 属于 Stage 1。
 - `references/` 包含两个独立 Git 参考仓库，不属于根 workspace；根格式化、安装和 CI 必须排除它们。
 - 网络下载超时时可重试 `uv sync`，但不得通过提交 `.venv` 解决。

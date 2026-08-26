@@ -34,24 +34,24 @@ Journey fixture
 
 缺少任一 P0 项，Bootstrap 都不能被视为完成。
 
-| Feature / Capability                      | Why Expected                                                          | Priority | Complexity | Bootstrap Deliverable                                                                                             | Confidence |
-| ----------------------------------------- | --------------------------------------------------------------------- | -------: | ---------- | ----------------------------------------------------------------------------------------------------------------- | ---------- |
-| 根仓库与 reference 原型审计              | 识别已有 Journey、Persona、Consent、UI、测试与资产，并给渐进迁移建立基线 | P0 | Med | `CURRENT_STATE`、资产/行为清单、目标结构与迁移判断 | HIGH |
-| 单仓多包与清晰 ownership                  | 三条开发线需要共享契约、统一命令、隔离职责                            |       P0 | Med        | `apps/*`、`packages/*`、`database/`、`evals/`、`tests/` 骨架及 scoped `AGENTS.md`                                 | HIGH       |
-| 一套根级开发命令                          | 新成员必须能安装、开发、构建和测试；CI 与本地行为应一致               |       P0 | Med        | install/dev/build/format/lint/typecheck/test 命令可执行                                                           | HIGH       |
-| Contract First 共享真源                   | Web、API、Agent 若各猜字段，第一次联调就会产生破坏性返工              |       P0 | High       | 领域类型 + 运行时校验 + API DTO + `EventEnvelope`，覆盖规格列出的九个领域                                         | HIGH       |
-| Consumer/provider contract tests          | “有共享类型”不足以证明 HTTP 边界兼容；Mock 与真实 provider 必须可互换 |       P0 | Med        | 至少验证 `AgentTurnRequest/Response` 及 Persona patch 关键场景；测试真实 client 而非直接 `fetch`                  | HIGH       |
-| Mock-first Agent provider                 | 前后端不应等待模型、Prompt 或密钥；CI 不应产生模型费用                |       P0 | Med        | `IAgentClient`、确定性的 `MockAgentClient`、`ResoAgentClient`、环境变量切换和等价错误语义                         | HIGH       |
-| Product API 事实/状态边界                 | 正式 Persona、Consent、Relationship、Conversation 必须有唯一 owner    |       P0 | High       | REST 模块骨架、应用服务边界、candidate -> validate -> commit 接缝；Agent 无 DB 写权限                             | HIGH       |
-| 数据库 migration/schema/seed/fixture 骨架 | 闭环必须能表达版本、证据、事件与确认状态；可重复测试需要稳定 fixture  |       P0 | High       | PostgreSQL + pgvector + Redis 配置；规格实体的初始 migration、索引原则、seed/test fixture                         | HIGH       |
-| 独立 Agent Service API                    | 智能运行时必须独立迭代，且不能把模型/Prompt 细节泄漏成产品 API        |       P0 | High       | FastAPI health + 六个 `/v1` 内部端点骨架，typed request/response 与 smoke tests                                   | HIGH       |
-| Agent runtime 可观测骨架                  | 后续无法重放“使用哪个 Persona/Memory/Policy”就无法安全调试或评估      |       P0 | Med        | mode/policy/prompt/model router 接缝；只记录允许字段，不记录私有 CoT                                              | HIGH       |
-| First Closed Loop 跨层 fixture            | 单独生成目录不能证明架构能支持核心价值                                |       P0 | High       | 一条确定性的 Journey -> Persona V1 -> mock turn -> candidate -> user accept -> V1.1 contract/integration scenario | HIGH       |
-| Mobile-first Web shell                    | 产品线需要真实消费 contracts/client 的最小入口，而非空 React 模板     |       P0 | Med        | Welcome、Journey、Persona、Agent Chat、Patch Review 路由/占位状态；不要求完整视觉和内容                           | HIGH       |
-| 隐私与配置基线                            | 关系、记忆和对话属于敏感数据；浏览器持有模型 Key 是不可接受的架构缺陷 |       P0 | Med        | `.env.example`、secret 边界、日志脱敏原则、Consent/Disclosure contracts、撤销事件                                 | HIGH       |
-| 异步事件与 Worker 接缝                    | Memory/Reflection 不应阻塞消息提交，但本轮无需生产队列平台            |       P1 | Med        | Redis-backed 或 in-memory 可替换接口、幂等 event handler 约定、worker skeleton                                    | HIGH       |
-| 文档、ADR 与贡献规范                      | 多团队并行时，约束若只存在于口头约定会迅速漂移                        |       P0 | Med        | README、架构/产品/Agent/API/DB/协作文档、ADR、PR 模板和 DoD                                                       | HIGH       |
-| 免费且确定性的 CI                         | 每次提交必须证明工程仍可运行，不依赖外部模型波动                      |       P0 | Med        | JS/TS 与 Python 全门禁、contract test、build、mock agent smoke eval                                               | HIGH       |
+| Feature / Capability                      | Why Expected                                                             | Priority | Complexity | Bootstrap Deliverable                                                                                             | Confidence |
+| ----------------------------------------- | ------------------------------------------------------------------------ | -------: | ---------- | ----------------------------------------------------------------------------------------------------------------- | ---------- |
+| 根仓库与 reference 原型审计               | 识别已有 Journey、Persona、Consent、UI、测试与资产，并给渐进迁移建立基线 |       P0 | Med        | `CURRENT_STATE`、资产/行为清单、目标结构与迁移判断                                                                | HIGH       |
+| 单仓多包与清晰 ownership                  | 三条开发线需要共享契约、统一命令、隔离职责                               |       P0 | Med        | `apps/*`、`packages/*`、`database/`、`evals/`、`tests/` 骨架及 scoped `AGENTS.md`                                 | HIGH       |
+| 一套根级开发命令                          | 新成员必须能安装、开发、构建和测试；CI 与本地行为应一致                  |       P0 | Med        | install/dev/build/format/lint/typecheck/test 命令可执行                                                           | HIGH       |
+| Contract First 共享真源                   | Web、API、Agent 若各猜字段，第一次联调就会产生破坏性返工                 |       P0 | High       | 领域类型 + 运行时校验 + API DTO + `EventEnvelope`，覆盖规格列出的九个领域                                         | HIGH       |
+| Consumer/provider contract tests          | “有共享类型”不足以证明 HTTP 边界兼容；Mock 与真实 provider 必须可互换    |       P0 | Med        | 至少验证 `AgentTurnRequest/Response` 及 Persona patch 关键场景；测试真实 client 而非直接 `fetch`                  | HIGH       |
+| Mock-first Agent provider                 | 前后端不应等待模型、Prompt 或密钥；CI 不应产生模型费用                   |       P0 | Med        | `IAgentClient`、确定性的 `MockAgentClient`、`ResoAgentClient`、环境变量切换和等价错误语义                         | HIGH       |
+| Product API 事实/状态边界                 | 正式 Persona、Consent、Relationship、Conversation 必须有唯一 owner       |       P0 | High       | REST 模块骨架、应用服务边界、candidate -> validate -> commit 接缝；Agent 无 DB 写权限                             | HIGH       |
+| 数据库 migration/schema/seed/fixture 骨架 | 闭环必须能表达版本、证据、事件与确认状态；可重复测试需要稳定 fixture     |       P0 | High       | PostgreSQL + pgvector + Redis 配置；规格实体的初始 migration、索引原则、seed/test fixture                         | HIGH       |
+| 独立 Agent Service API                    | 智能运行时必须独立迭代，且不能把模型/Prompt 细节泄漏成产品 API           |       P0 | High       | FastAPI health + 六个 `/v1` 内部端点骨架，typed request/response 与 smoke tests                                   | HIGH       |
+| Agent runtime 可观测骨架                  | 后续无法重放“使用哪个 Persona/Memory/Policy”就无法安全调试或评估         |       P0 | Med        | mode/policy/prompt/model router 接缝；只记录允许字段，不记录私有 CoT                                              | HIGH       |
+| First Closed Loop 跨层 fixture            | 单独生成目录不能证明架构能支持核心价值                                   |       P0 | High       | 一条确定性的 Journey -> Persona V1 -> mock turn -> candidate -> user accept -> V1.1 contract/integration scenario | HIGH       |
+| Mobile-first Web shell                    | 产品线需要真实消费 contracts/client 的最小入口，而非空 React 模板        |       P0 | Med        | Welcome、Journey、Persona、Agent Chat、Patch Review 路由/占位状态；不要求完整视觉和内容                           | HIGH       |
+| 隐私与配置基线                            | 关系、记忆和对话属于敏感数据；浏览器持有模型 Key 是不可接受的架构缺陷    |       P0 | Med        | `.env.example`、secret 边界、日志脱敏原则、Consent/Disclosure contracts、撤销事件                                 | HIGH       |
+| 异步事件与 Worker 接缝                    | Memory/Reflection 不应阻塞消息提交，但本轮无需生产队列平台               |       P1 | Med        | Redis-backed 或 in-memory 可替换接口、幂等 event handler 约定、worker skeleton                                    | HIGH       |
+| 文档、ADR 与贡献规范                      | 多团队并行时，约束若只存在于口头约定会迅速漂移                           |       P0 | Med        | README、架构/产品/Agent/API/DB/协作文档、ADR、PR 模板和 DoD                                                       | HIGH       |
+| 免费且确定性的 CI                         | 每次提交必须证明工程仍可运行，不依赖外部模型波动                         |       P0 | Med        | JS/TS 与 Python 全门禁、contract test、build、mock agent smoke eval                                               | HIGH       |
 
 ## Table Stakes — First Closed Loop (Next Product Phase)
 

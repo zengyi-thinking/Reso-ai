@@ -23,3 +23,13 @@ export const SubjectTypeSchema = z.enum(["user", "agent"]);
 export type SubjectType = z.infer<typeof SubjectTypeSchema>;
 
 export const ConfidenceSchema = z.number().min(0).max(1);
+
+export const ApiErrorSchema = z.object({
+  error: z.object({
+    code: z.string().regex(/^[a-z0-9_]+$/),
+    message: z.string().min(1),
+    requestId: UuidSchema.optional(),
+    details: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+  }),
+});
+export type ApiError = z.infer<typeof ApiErrorSchema>;

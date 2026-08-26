@@ -1,0 +1,26 @@
+{
+  "request": {
+    "requestId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "userId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "agentId": "0198d4f3-4a10-7851-a56d-bacbd2d90fb0",
+    "conversationId": "0198d4f3-5cf6-7f2e-aef8-dbc910a31147",
+    "message": "不是，我只是不喜欢无意义社交。",
+    "personaVersionId": null
+  },
+  "response": {
+    "requestId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "message": "谢谢你纠正我。我会记住这次纠正，但不会把一次表达直接写成人格结论。",
+    "mode": "mirror",
+    "memoryCandidates": [
+      {
+        "type": "correction",
+        "summary": "User explicitly corrected a prior interpretation.",
+        "evidenceMessageIds": [],
+        "confidence": 0.95,
+        "requiresReview": true
+      }
+    ],
+    "personaPatchCandidates": [],
+    "traceId": "0198d4f3-6f1e-72b4-8bc9-3af746768b00"
+  }
+}

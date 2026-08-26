@@ -16,6 +16,7 @@ PostgreSQL + pgvector 保存正式事实和后续向量检索，Redis 用于简�
 - Decision support：`recommendations`。
 - Privacy：`consent_grants`、`disclosure_rules`。
 - Quality：`agent_traces`、`agent_evaluations`。
+- Async delivery：`event_outbox`、`event_consumptions`、`dead_letter_events`。
 
 ## Ownership
 
@@ -34,4 +35,6 @@ Product API/Backend Worker 是正式表的唯一写入者。Agent Service 只接
 
 ## Migration
 
-`0001_enable_extensions.sql` 启用 pgcrypto/vector；`0002_initial_schema.sql` 建立第一版结构。合并后只追加新 migration，禁止修改历史文件。
+`0001_enable_extensions.sql` 启用 pgcrypto/vector；`0002_initial_schema.sql` 建立第一版结构；`0003_event_outbox.sql` 建立 committed event、消费幂等与 dead-letter 接缝。合并后只追加新 migration，禁止修改历史文件。
+
+`pnpm test:database` 使用独立临时 Compose project 运行全部 migration、应用合成 seed、检查核心/outbox 表并验证 Redis 健康，结束后只删除该临时 project 的 volume。已有环境的增量发布 runner 仍属于 Stage 1。
