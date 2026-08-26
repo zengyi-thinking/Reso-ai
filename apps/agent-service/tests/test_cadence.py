@@ -61,3 +61,41 @@ def test_uncertain_invited_relationship_reflection_can_reconsider() -> None:
         decide("帮我分析一下，她最近不太愿意跟我聊天了。", history=True)
         is ConversationCadence.RECONSIDERED
     )
+
+
+def test_companion_relationship_concern_with_history_reconsiders() -> None:
+    # The reference UX scenario: a serious relationship concern without strong
+    # evidence still earns a genuine second look, not an instant conclusion.
+    assert (
+        decide("她好像没以前那么愿意跟我聊天了。", history=True) is ConversationCadence.RECONSIDERED
+    )
+
+
+def test_status_texts_vary_across_messages() -> None:
+    first = _understanding_text("今天我朋友跟我说了一件事，我有点在意。")
+    second = _understanding_text("朋友约我周末出去，但我想先把手上的事做完再说。")
+    assert first != second
+
+
+def _understanding_text(message: str) -> str:
+    decision = ConversationCadencePolicy().decide(
+        message=message,
+        perception=ModeRouter().perceive(message),
+        selection=ModeRouter().route(
+            AgentTurnRequest(
+                request_id=uuid4(),
+                user_id=uuid4(),
+                agent_id=uuid4(),
+                conversation_id=uuid4(),
+                message=message,
+                persona_version_id=None,
+            ),
+            ModeRouter().perceive(message),
+        ),
+        context=ContextBuilder().build(
+            message=message,
+            authorized=AgentAuthorizedContext(recent_messages=[]),
+        ),
+    )
+    assert decision.status_events
+    return decision.status_events[0].text

@@ -552,6 +552,310 @@ small,
 .agent-bubble.tentative {
   color: #5f7076;
   background: #fbfcfa;
+  border-style: dashed;
+}
+
+.bubble-tag {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--lab-muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.evidence-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.evidence-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 11px;
+  border: 1px solid rgba(141, 130, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.55;
+  animation: event-enter 320ms var(--lab-ease) both;
+}
+
+.evidence-chip b {
+  flex: none;
+  color: var(--lab-thought);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.evidence-chip .evidence-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: #4f5264;
+}
+
+.evidence-chip small {
+  margin-left: auto;
+  flex: none;
+  color: var(--lab-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.evidence-chip.correction {
+  border-color: rgba(191, 137, 96, 0.45);
+  background: rgba(244, 225, 209, 0.5);
+}
+
+.evidence-chip.correction b {
+  color: #a06a3c;
+}
+
+.evidence-date {
+  flex: none;
+  color: var(--lab-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- thinking trace: collapsed summary + expandable replay --- */
+
+.thinking-trace {
+  width: min(100%, 430px);
+}
+
+.trace-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 12px;
+  color: var(--lab-muted);
+  border: 1px dashed var(--lab-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12px;
+  justify-items: center;
+  transition:
+    border-color 220ms var(--lab-ease),
+    color 220ms var(--lab-ease);
+}
+
+.trace-summary:hover {
+  border-color: color-mix(in oklch, var(--lab-thought) 40%, transparent);
+  color: #6f6a86;
+}
+
+.trace-summary small {
+  margin-left: 4px;
+  opacity: 0.65;
+}
+
+.trace-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--lab-thought);
+  opacity: 0.7;
+}
+
+.thinking-trace.expanded .trace-dot {
+  animation: thinking-dot 1.35s ease-in-out infinite;
+}
+
+.trace-body {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 4px;
+  padding: 12px 14px;
+  border-left: 2px solid color-mix(in oklch, var(--lab-thought) 26%, transparent);
+  animation: event-enter 320ms var(--lab-ease) both;
+}
+
+.trace-steps {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trace-step {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  color: #6f6a86;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.trace-step .step-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--lab-thought) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--lab-thought) 10%, transparent);
+  align-self: center;
+}
+
+.trace-step.done {
+  opacity: 0.92;
+}
+
+.trace-step.done .step-dot {
+  background: var(--lab-thought);
+}
+
+.trace-replay {
+  min-height: 32px;
+  justify-self: start;
+  font-size: 12px;
+}
+
+.replay-reflection {
+  margin: 0;
+  color: #7d739d;
+}
+
+.replay-message {
+  margin: 0;
+  color: #5f7076;
+}
+
+.restraint-note {
+  width: fit-content;
+  margin-bottom: 6px;
+  color: var(--lab-muted);
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* --- streaming message with caret --- */
+
+.agent-bubble.streaming {
+  color: var(--reso-color-ink);
+}
+
+.type-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--lab-thought);
+  animation: caret-blink 0.9s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* --- memory writes: what Reso remembered this turn --- */
+
+.memory-writes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 6px 0 2px;
+  width: min(100%, 430px);
+}
+
+.memory-writes > small {
+  color: var(--lab-muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.memory-write {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 11px;
+  border: 1px solid rgba(169, 216, 245, 0.5);
+  border-radius: 12px;
+  background: rgba(238, 245, 244, 0.7);
+  font-size: 12px;
+  line-height: 1.55;
+  animation: event-enter 360ms var(--lab-ease) both;
+}
+
+.memory-write b {
+  flex: none;
+  color: var(--reso-color-sky-deep, #5b9ec9);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.memory-write i {
+  flex: none;
+  margin-left: auto;
+  color: #a06a3c;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.memory-write.correction {
+  border-color: rgba(191, 137, 96, 0.45);
+  background: rgba(244, 225, 209, 0.45);
+}
+
+.memory-write.correction b {
+  color: #a06a3c;
+}
+
+/* --- capability strip (under-the-hood) --- */
+
+.capability-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capability-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--lab-line);
+  border-radius: 999px;
+  background: var(--lab-paper-soft);
+  font-size: 11px;
+  color: #4f5264;
+}
+
+.capability-chip b {
+  color: var(--lab-thought);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+/* --- memory panel timeline groups --- */
+
+.memory-group {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.memory-group h4 {
+  margin: 0;
+  color: var(--lab-muted);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.reflection-card.compact {
+  padding: 10px 12px;
 }
 
 .turn-meta {

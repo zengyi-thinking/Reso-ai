@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AgentPublicEvent } from "@reso/contracts";
-import { eventPauseDuration, nextVisibleEvents } from "./conversation-events.js";
+import {
+  applyStreamEvent,
+  eventPauseDuration,
+  initialPendingState,
+  nextVisibleEvents,
+} from "./conversation-events.js";
 
 describe("breathing conversation event queue", () => {
   it("replaces transient status when public content arrives", () => {
@@ -37,6 +42,29 @@ describe("breathing conversation event queue", () => {
 
     const events = nextVisibleEvents(nextVisibleEvents([tentative], reconsidering), final);
     expect(events).toEqual([tentative, reconsidering, final]);
-    expect(events.reduce((total, event) => total + eventPauseDuration(event), 0)).toBe(440);
+    expect(events.reduce((total, event) => total + eventPauseDuration(event), 0)).toBe(780);
+  });
+
+  it("accumulates message deltas into the streaming buffer", () => {
+    let state = initialPendingState();
+    state = applyStreamEvent(state, { type: "message_delta", text: "重新想了一" });
+    state = applyStreamEvent(state, { type: "message_delta", text: "下：这是两回事。" });
+    expect(state.streaming).toBe("重新想了一下：这是两回事。");
+
+    state = applyStreamEvent(state, {
+      type: "message",
+      position: "final",
+      text: "重新想了一下：这是两回事。",
+    });
+    expect(state.streaming).toBeNull();
+    expect(state.events.at(-1)).toEqual({
+      type: "message",
+      position: "final",
+      text: "重新想了一下：这是两回事。",
+    });
+  });
+
+  it("never pauses on deltas because the server already paces them", () => {
+    expect(eventPauseDuration({ type: "message_delta", text: "一段" })).toBe(0);
   });
 });

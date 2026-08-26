@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from reso_agent.app import app
+from reso_agent.models.provider import DeterministicModelProvider
 from reso_agent.contracts import LabPatchDecision, LabSessionCreateRequest
 from reso_agent.lab import LabWorkspace
 
@@ -11,7 +12,7 @@ client = TestClient(app)
 def create_session() -> dict[str, object]:
     response = client.post(
         "/v1/lab/sessions",
-        json={"userSlug": "user-alice", "provider": "deterministic"},
+        json={"userSlug": "user-alice"},
     )
     assert response.status_code == 200
     return response.json()
@@ -115,9 +116,9 @@ def test_lab_supports_three_continuous_turns() -> None:
 
 @pytest.mark.asyncio
 async def test_longitudinal_simulation_becomes_more_specific_after_correction() -> None:
-    workspace = LabWorkspace()
+    workspace = LabWorkspace(model_provider=DeterministicModelProvider())
     session = workspace.create_session(
-        LabSessionCreateRequest(user_slug="user-alice", provider="deterministic")
+        LabSessionCreateRequest(user_slug="user-alice")
     )
 
     day_1 = await workspace.simulate(session.id, 1)
@@ -138,3 +139,30 @@ async def test_longitudinal_simulation_becomes_more_specific_after_correction() 
     assert slow_question.retrieved_memories[0].memory.type.value == "correction"
     assert "你很慢热" not in slow_question.response
     assert all(check.passed for turn in [*day_1, *day_7, *day_30] for check in turn.eval)
+
+
+def test_lab_stream_emits_deltas_memory_writes_and_grounded_recall() -> None:
+    session = create_session()
+    session_id = session["id"]
+    with client.stream(
+        "POST",
+        f"/v1/lab/sessions/{session_id}/turns/stream",
+        json={"message": "那个长期项目终于完成第一版了，你还记得吗？"},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert '"type":"message_delta"' in body
+    # The recall status is grounded in what retrieval actually found.
+    assert ("翻到你" in body) or ("找到" in body)
+    updated = client.get(f"/v1/lab/sessions/{session_id}").json()
+    turn = updated["turns"][0]
+    assert turn["memoryWrites"], "lab turn should expose what it remembered"
+    assert turn["memoryWrites"][0]["summary"]
+    assert turn["memoryWrites"][0]["type"] in {
+        "episodic",
+        "persona_related",
+        "relationship",
+        "correction",
+        "reflection",
+    }

@@ -9,6 +9,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
 
 from reso_agent.contracts import (
+    AgentMessageDeltaEvent,
+    AgentMessageEvent,
     AgentReflectionRequest,
     AgentReflectionResponse,
     AgentStatusEvent,
@@ -32,6 +34,7 @@ from reso_agent.contracts import (
 )
 from reso_agent.lab import LabWorkspace
 from reso_agent.models.provider import ModelProviderError
+from reso_agent.models.router import model_provider_for, model_route_from_env
 from reso_agent.runtime.pipeline import AgentRuntime
 
 app = FastAPI(title="Reso Agent", version="0.1.0")
@@ -41,8 +44,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
-runtime = AgentRuntime()
-lab = LabWorkspace()
+# Real-model-first: production boots only with a valid MiniMax configuration.
+# RESO_MODEL_ROUTE=deterministic is the explicit opt-out used by the test suite.
+_model_provider = model_provider_for(model_route_from_env())
+runtime = AgentRuntime(model_provider=_model_provider)
+lab = LabWorkspace(model_provider=_model_provider)
 _stream_event_adapter: TypeAdapter[AgentStreamEvent] = TypeAdapter(AgentStreamEvent)
 
 
@@ -183,6 +189,10 @@ async def stream_lab_turn(session_id: UUID, request: LabTurnRequest) -> Streamin
                 if serialized in emitted:
                     emitted.remove(serialized)
                     continue
+                if isinstance(public_event, AgentMessageEvent):
+                    for chunk in _message_chunks(public_event.text):
+                        yield _stream_data(AgentMessageDeltaEvent(text=chunk))
+                        await asyncio.sleep(0.03)
                 yield serialized
             yield _stream_data(AgentStreamCompleteEvent(turn_id=turn.id, trace_id=turn.trace_id))
         except KeyError:
@@ -218,6 +228,10 @@ async def stream_lab_turn(session_id: UUID, request: LabTurnRequest) -> Streamin
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _message_chunks(text: str, size: int = 12) -> list[str]:
+    return [text[index : index + size] for index in range(0, len(text), size)]
 
 
 def _stream_data(event: AgentStreamEvent) -> str:

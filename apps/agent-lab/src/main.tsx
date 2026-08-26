@@ -4,6 +4,7 @@ import {
   AgentStreamEventSchema,
   type AgentPublicEvent,
   type AgentStreamEvent,
+  type LabMemoryWrite,
   type LabSession,
   type LabTurn,
   type LabUser,
@@ -11,12 +12,14 @@ import {
   type PersonaPatchCandidate,
 } from "@reso/contracts";
 import "@reso/design-tokens/tokens.css";
-import { eventPauseDuration, nextVisibleEvents } from "./conversation-events.js";
+import {
+  applyStreamEvent,
+  eventPauseDuration,
+  initialPendingState,
+} from "./conversation-events.js";
 import "./style.css";
 
 const apiBase = import.meta.env.VITE_AGENT_SERVICE_URL ?? "http://localhost:8000";
-const defaultProvider =
-  import.meta.env.VITE_DEFAULT_MODEL_PROVIDER === "real" ? "real" : "deterministic";
 
 type Panel = "inspector" | "persona" | "memory";
 type Operation = "idle" | "session" | "simulate" | "inspector";
@@ -24,6 +27,7 @@ type PendingTurn = {
   message: string;
   replayTurnId?: string;
   events: AgentPublicEvent[];
+  streaming: string | null;
   error: string | null;
   retryable: boolean;
 };
@@ -92,7 +96,6 @@ class StreamError extends Error {
 
 function AgentLab(): React.JSX.Element {
   const [users, setUsers] = useState<LabUser[]>([]);
-  const [provider, setProvider] = useState<"deterministic" | "real">(defaultProvider);
   const [session, setSession] = useState<LabSession | null>(null);
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("inspector");
@@ -131,7 +134,7 @@ function AgentLab(): React.JSX.Element {
     await run("session", async () => {
       const created = await api<LabSession>("/v1/lab/sessions", {
         method: "POST",
-        body: JSON.stringify({ userSlug: user.slug, provider }),
+        body: JSON.stringify({ userSlug: user.slug }),
       });
       setSession(created);
       setSelectedTurnId(null);
@@ -158,7 +161,7 @@ function AgentLab(): React.JSX.Element {
     setPending({
       message: snapshot,
       ...(replayTurnId ? { replayTurnId } : {}),
-      events: [],
+      ...initialPendingState(),
       error: null,
       retryable: false,
     });
@@ -169,7 +172,15 @@ function AgentLab(): React.JSX.Element {
         async (event) => {
           if (event.type === "complete" || event.type === "error") return;
           setPending((current) =>
-            current ? { ...current, events: nextVisibleEvents(current.events, event) } : current,
+            current
+              ? {
+                  ...current,
+                  ...applyStreamEvent(
+                    { events: current.events, streaming: current.streaming },
+                    event,
+                  ),
+                }
+              : current,
           );
           await eventPause(event);
         },
@@ -227,16 +238,6 @@ function AgentLab(): React.JSX.Element {
             测试用户
             <select disabled value={users[0]?.slug ?? "loading"}>
               <option>{users[0]?.displayName ?? "加载中…"}</option>
-            </select>
-          </label>
-          <label>
-            模型路线
-            <select
-              value={provider}
-              onChange={(event) => setProvider(event.target.value as "deterministic" | "real")}
-            >
-              <option value="deterministic">Deterministic · CI</option>
-              <option value="real">MiniMax · Real</option>
             </select>
           </label>
           <button
@@ -344,6 +345,7 @@ function AgentLab(): React.JSX.Element {
                       await refresh();
                     }).catch(() => undefined)
                   }
+                  turns={session.turns}
                 />
               ) : null}
             </aside>
@@ -438,6 +440,9 @@ function TurnView(props: {
   selected: boolean;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
+  const finals = props.turn.publicEvents.filter(
+    (event) => event.type === "message" && event.position !== "tentative",
+  );
   return (
     <article className={`turn-block ${props.selected ? "selected" : ""}`}>
       <div className="user-row">
@@ -448,11 +453,17 @@ function TurnView(props: {
           <i />
         </span>
         <div className="agent-sequence">
-          {props.turn.publicEvents.map((event, index) => (
-            <PublicEventView completed event={event} key={`${event.type}-${index}`} />
-          ))}
+          <ThinkingTrace turn={props.turn} />
+          {finals.map((event, index) =>
+            event.type === "message" ? (
+              <div className={`agent-bubble ${event.position}`} key={`final-${index}`}>
+                {event.text}
+              </div>
+            ) : null,
+          )}
+          <MemoryWriteRow writes={props.turn.memoryWrites} />
           <button className="turn-meta" onClick={() => props.onSelect(props.turn.id)}>
-            {props.turn.cadence} · {props.turn.mode} · {props.turn.model.provider} ·{" "}
+            {CADENCE_LABELS[props.turn.cadence]} · {props.turn.mode} · {props.turn.model.provider} ·{" "}
             {props.turn.model.latencyMs}ms
           </button>
         </div>
@@ -460,6 +471,168 @@ function TurnView(props: {
     </article>
   );
 }
+
+const CADENCE_LABELS: Record<LabTurn["cadence"], string> = {
+  direct: "直接回应",
+  considered: "想了想",
+  reflective: "想起了一些事",
+  reconsidered: "认真想了两次",
+};
+
+function thinkingSummary(turn: LabTurn): string {
+  if (turn.cadence === "reconsidered") return "认真想了两次";
+  if (turn.model.latencyMs >= 500) {
+    return `认真想了 ${(turn.model.latencyMs / 1000).toFixed(1)} 秒`;
+  }
+  if (turn.cadence === "reflective") return "想起了一些事";
+  return "想了想";
+}
+
+function ThinkingTrace({ turn }: { turn: LabTurn }): React.JSX.Element | null {
+  const [expanded, setExpanded] = useState(false);
+  const [replaying, setReplaying] = useState(false);
+  const steps = turn.publicEvents.filter(
+    (event) =>
+      event.type === "status" || event.type === "public_reflection" || event.type === "message",
+  );
+  const hasTrace = steps.some(
+    (event) => event.type !== "message" || event.position === "tentative",
+  );
+  if (!hasTrace) {
+    // Restraint made visible: occasionally note that Reso chose not to over-think.
+    const showRestraint =
+      turn.cadence === "direct" && Number.parseInt(turn.id.slice(0, 4), 16) % 5 === 0;
+    return showRestraint ? <div className="restraint-note">这一轮它决定不多想</div> : null;
+  }
+  return (
+    <div className={`thinking-trace ${expanded ? "expanded" : ""}`}>
+      <button
+        aria-expanded={expanded}
+        className="trace-summary"
+        onClick={() => {
+          setExpanded((value) => !value);
+          setReplaying(false);
+        }}
+      >
+        <span className="trace-dot" aria-hidden="true" />
+        {thinkingSummary(turn)}
+        <small>{expanded ? "收起" : "展开过程"}</small>
+      </button>
+      {expanded ? (
+        <div className="trace-body">
+          {replaying ? (
+            <TraceReplay
+              onDone={() => setReplaying(false)}
+              steps={steps.map((event) => ({ event }))}
+            />
+          ) : (
+            <ol className="trace-steps">
+              {steps.map((event, index) => (
+                <li className="trace-step done" key={`${event.type}-${index}`}>
+                  {event.type === "status" ? (
+                    <>
+                      <span className="step-dot" aria-hidden="true" />
+                      {event.text}
+                    </>
+                  ) : event.type === "public_reflection" ? (
+                    <div className="reflection-card compact">
+                      <small>
+                        {event.evidenceRefs.some((r) => r.startsWith("memory:"))
+                          ? "想起了一件事"
+                          : "我注意到了一点"}
+                      </small>
+                      <p>{event.text}</p>
+                      <EvidenceChips refs={event.evidenceRefs} turn={turn} />
+                    </div>
+                  ) : (
+                    <div className="agent-bubble tentative">
+                      <small className="bubble-tag">先说一个初步的</small>
+                      {event.text}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          <button
+            className="quiet-button trace-replay"
+            disabled={replaying}
+            onClick={() => setReplaying(true)}
+          >
+            按原节奏回放
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TraceReplay({
+  steps,
+  onDone,
+}: {
+  steps: Array<{ event: AgentPublicEvent }>;
+  onDone: () => void;
+}): React.JSX.Element {
+  const [visible, setVisible] = useState(0);
+  useEffect(() => {
+    const step = steps[visible];
+    if (!step) {
+      onDone();
+      return;
+    }
+    const event = step.event;
+    const duration =
+      event.type === "public_reflection" ? 900 : event.type === "message" ? 700 : 550;
+    const timer = window.setTimeout(() => setVisible((value) => value + 1), duration);
+    return () => window.clearTimeout(timer);
+  }, [visible, steps, onDone]);
+  return (
+    <ol className="trace-steps">
+      {steps.slice(0, visible).map((step, index) => {
+        const event = step.event;
+        return (
+          <li className="trace-step done replaying" key={`${event.type}-${index}`}>
+            {event.type === "status" ? (
+              <>
+                <span className="step-dot" aria-hidden="true" />
+                {event.text}
+              </>
+            ) : event.type === "public_reflection" ? (
+              <p className="replay-reflection">{event.text}</p>
+            ) : (
+              <p className="replay-message">{event.text}</p>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function MemoryWriteRow({ writes }: { writes: LabMemoryWrite[] }): React.JSX.Element | null {
+  if (writes.length === 0) return null;
+  return (
+    <div className="memory-writes">
+      <small>这一轮它记住了</small>
+      {writes.map((write) => (
+        <span className={`memory-write ${write.type}`} key={write.id}>
+          <b>{MEMORY_TYPE_LABELS[write.type] ?? write.type}</b>
+          {write.summary}
+          {write.requiresReview ? <i>待你确认</i> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const MEMORY_TYPE_LABELS: Record<string, string> = {
+  episodic: "经历",
+  persona_related: "关于你",
+  relationship: "关系",
+  correction: "纠正",
+  reflection: "反思",
+};
 
 function PendingTurnView({
   pending,
@@ -478,7 +651,7 @@ function PendingTurnView({
           <i />
         </span>
         <div className="agent-sequence">
-          {pending.events.length === 0 && !pending.error ? (
+          {pending.events.length === 0 && !pending.streaming && !pending.error ? (
             <PublicEventView
               event={{ type: "status", phase: "understanding", text: "正在想想这件事…" }}
             />
@@ -486,6 +659,12 @@ function PendingTurnView({
           {pending.events.map((event, index) => (
             <PublicEventView event={event} key={`${event.type}-${index}`} />
           ))}
+          {pending.streaming ? (
+            <div className="agent-bubble streaming">
+              {pending.streaming}
+              <span className="type-caret" aria-hidden="true" />
+            </div>
+          ) : null}
           {pending.error ? (
             <div className="turn-error" role="alert">
               <p>{pending.error}</p>
@@ -501,9 +680,11 @@ function PendingTurnView({
 function PublicEventView({
   event,
   completed = false,
+  turn,
 }: {
   event: AgentPublicEvent;
   completed?: boolean;
+  turn?: LabTurn;
 }): React.JSX.Element | null {
   if (event.type === "status") {
     if (completed && event.phase !== "reconsidering") return null;
@@ -520,16 +701,85 @@ function PublicEventView({
       <div className="reflection-card">
         <small>{memory ? "想起了一件事" : "我注意到了一点"}</small>
         <p>{event.text}</p>
+        {turn ? <EvidenceChips refs={event.evidenceRefs} turn={turn} /> : null}
       </div>
     );
   }
-  return <div className={`agent-bubble ${event.position}`}>{event.text}</div>;
+  return (
+    <div className={`agent-bubble ${event.position}`}>
+      {event.position === "tentative" ? <small className="bubble-tag">先说一个初步的</small> : null}
+      {event.text}
+    </div>
+  );
+}
+
+function EvidenceChips({
+  refs,
+  turn,
+}: {
+  refs: string[];
+  turn: LabTurn;
+}): React.JSX.Element | null {
+  const chips = refs.flatMap((reference) => {
+    const match = /^memory:(\d+)$/.exec(reference);
+    if (!match) return [];
+    const item = turn.retrievedMemories[Number(match[1])];
+    return item ? [{ key: reference, item }] : [];
+  });
+  if (chips.length === 0) return null;
+  return (
+    <div className="evidence-chips">
+      {chips.map(({ key, item }) => (
+        <span
+          className={`evidence-chip ${item.memory.type === "correction" ? "correction" : ""}`}
+          key={key}
+          title={item.score.reason}
+        >
+          <b>{item.memory.type === "correction" ? "已纠正" : "记忆"}</b>
+          <span className="evidence-date">{formatDay(item.memory.occurredAt)}</span>
+          <span className="evidence-summary">{item.memory.summary}</span>
+          <small>{item.score.final.toFixed(2)}</small>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function formatDay(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
 function TurnInspector({ turn }: { turn: LabTurn | undefined }): React.JSX.Element {
   if (!turn) return <p className="muted panel-copy">点击一轮对话，查看它使用了哪些公开依据。</p>;
+  const citedCount = turn.publicEvents.filter(
+    (event) =>
+      event.type === "public_reflection" && event.evidenceRefs.some((r) => r.startsWith("memory:")),
+  ).length;
+  const capabilities = [
+    { label: "Prompt", value: turn.promptVersion },
+    { label: "Context", value: `${turn.personaFields.length} 个切片` },
+    {
+      label: "Memory",
+      value: `检索 ${turn.retrievedMemories.length} · 引用 ${citedCount} · 写入 ${turn.memoryWrites.length}`,
+    },
+    { label: "Trace", value: "allowlist ✓" },
+    { label: "Safety", value: turn.mode === "proxy" ? "consent gate" : "bounded modes" },
+    { label: "Tools", value: "0" },
+  ];
   return (
     <div className="panel-scroll">
+      <Inspect title="这一轮的底层能力">
+        <div className="capability-strip">
+          {capabilities.map((capability) => (
+            <span className="capability-chip" key={capability.label}>
+              <b>{capability.label}</b>
+              {capability.value}
+            </span>
+          ))}
+        </div>
+        <small>Prompt / Context / Memory Retrieval / Tool Calling / Trace·Eval / Safety</small>
+      </Inspect>
       <Inspect title="Breathing output">
         <Code value={{ cadence: turn.cadence, events: turn.publicEvents }} />
       </Inspect>
@@ -661,14 +911,33 @@ function PersonaPanel(props: {
 function MemoryPanel(props: {
   memories: MemoryContext[];
   onToggle: (memory: MemoryContext) => void;
+  turns: LabTurn[];
 }): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
-  const visible = props.memories.filter(
-    (memory) =>
-      (type === "all" || memory.type === type) &&
-      memory.summary.toLowerCase().includes(query.toLowerCase()),
-  );
+  const usage = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const turn of props.turns) {
+      for (const item of turn.retrievedMemories) {
+        counts.set(item.memory.id, (counts.get(item.memory.id) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [props.turns]);
+  const visible = props.memories
+    .filter(
+      (memory) =>
+        (type === "all" || memory.type === type) &&
+        memory.summary.toLowerCase().includes(query.toLowerCase()),
+    )
+    .toSorted((first, second) => second.occurredAt.localeCompare(first.occurredAt));
+  const groups = new Map<string, MemoryContext[]>();
+  for (const memory of visible) {
+    const day = formatDay(memory.occurredAt);
+    const bucket = groups.get(day);
+    if (bucket) bucket.push(memory);
+    else groups.set(day, [memory]);
+  }
   return (
     <div className="panel-scroll">
       <div className="filters">
@@ -687,21 +956,36 @@ function MemoryPanel(props: {
           )}
         </select>
       </div>
-      <p className="hint">关闭某条 Memory 后 Replay，可做 Memory Ablation。</p>
-      {visible.map((memory) => (
-        <div className={`memory-card ${memory.enabled ? "" : "disabled"}`} key={memory.id}>
-          <div>
-            <strong>{memory.type}</strong>
-            <small>{memory.id.slice(-8)}</small>
-          </div>
-          <p>{memory.summary}</p>
-          <small>
-            importance {memory.importance.toFixed(2)} · topics {memory.topics.join(" / ") || "—"}
-          </small>
-          <button className="quiet-button" onClick={() => props.onToggle(memory)}>
-            {memory.enabled ? "Disable" : "Enable"}
-          </button>
-        </div>
+      <p className="hint">
+        记忆的时间线：被想起的次数越多，说明它越常参与理解你。关闭某条 Memory 后 Replay，可做 Memory
+        Ablation。
+      </p>
+      {[...groups.entries()].map(([day, memories]) => (
+        <section className="memory-group" key={day}>
+          <h4>{day}</h4>
+          {memories.map((memory) => {
+            const recalled = usage.get(memory.id) ?? 0;
+            return (
+              <div className={`memory-card ${memory.enabled ? "" : "disabled"}`} key={memory.id}>
+                <div>
+                  <strong>
+                    {MEMORY_TYPE_LABELS[memory.type] ?? memory.type}
+                    {memory.type === "correction" ? " · 已纠正" : ""}
+                  </strong>
+                  <small>{memory.id.slice(-8)}</small>
+                </div>
+                <p>{memory.summary}</p>
+                <small>
+                  importance {memory.importance.toFixed(2)} · 被想起 {recalled} 次 · topics{" "}
+                  {memory.topics.join(" / ") || "—"}
+                </small>
+                <button className="quiet-button" onClick={() => props.onToggle(memory)}>
+                  {memory.enabled ? "Disable" : "Enable"}
+                </button>
+              </div>
+            );
+          })}
+        </section>
       ))}
     </div>
   );
@@ -726,7 +1010,7 @@ function Code({ value }: { value: unknown }): React.JSX.Element {
   return <pre>{JSON.stringify(value, null, 2)}</pre>;
 }
 
-async function eventPause(event: AgentPublicEvent): Promise<void> {
+async function eventPause(event: AgentStreamEvent): Promise<void> {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const duration = eventPauseDuration(event);
   if (duration > 0) await new Promise((resolve) => window.setTimeout(resolve, duration));

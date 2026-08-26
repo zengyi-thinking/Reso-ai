@@ -8,6 +8,7 @@ import {
   AgentStreamEventSchema,
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
+  LabTurnSchema,
   PersonaPatchCandidateSchema,
   LabSessionSchema,
 } from "../src/index.js";
@@ -136,6 +137,58 @@ describe("Reso.AI contracts", () => {
     expect(AgentStreamEventSchema.parse({ type: "complete", turnId: id, traceId: id }).type).toBe(
       "complete",
     );
+    expect(AgentStreamEventSchema.parse({ type: "message_delta", text: "重新想了一" }).type).toBe(
+      "message_delta",
+    );
+    expect(AgentStreamEventSchema.safeParse({ type: "message_delta", text: "" }).success).toBe(
+      false,
+    );
+  });
+
+  it("lab turns expose what memory was written this turn", () => {
+    const turn = LabTurnSchema.safeParse({
+      id: id,
+      createdAt: "2026-08-26T10:00:00+00:00",
+      input: "不是，我只是讨厌无意义社交。",
+      response: "好，这个区别很重要。",
+      mode: "companion",
+      modeReason: "ordinary sharing or conversation",
+      promptVersion: "companion/v3",
+      personaVersion: "1.0",
+      personaFields: ["values"],
+      retrievedMemories: [],
+      contextSummary: {
+        personaFields: ["values"],
+        memoryIds: [],
+        recentMessageCount: 0,
+        relationshipIncluded: false,
+      },
+      model: {
+        provider: "deterministic",
+        model: "reso-relational-v1",
+        latencyMs: 0,
+        promptTokens: null,
+        completionTokens: null,
+      },
+      memoryCandidateIds: [id],
+      memoryWrites: [
+        {
+          id: id,
+          type: "correction",
+          summary: "用户明确纠正：并非普遍慢热。",
+          requiresReview: true,
+        },
+      ],
+      personaPatchCandidates: [],
+      relationshipCandidates: [],
+      cadence: "direct",
+      publicEvents: [{ type: "message", position: "final", text: "好，这个区别很重要。" }],
+      eval: [],
+      traceId: id,
+      replayOf: null,
+    });
+    expect(turn.success).toBe(true);
+    expect(turn.success && turn.data.memoryWrites[0].type).toBe("correction");
   });
 
   it("rejects public output without a final position or with invalid evidence", () => {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -18,15 +18,16 @@ from reso_agent.contracts import (
     ModelMetadata,
 )
 from reso_agent.models.provider import (
-    DeterministicModelProvider,
     ModelProvider,
     ModelRequest,
+    create_real_provider_from_env,
 )
 from reso_agent.policy.disclosure import DisclosurePolicy, DisclosureResult, PolicyDecision
 from reso_agent.reflection.service import ReflectionResult, ReflectionService
 from reso_agent.runtime.cadence import CadenceDecision, ConversationCadencePolicy
 from reso_agent.runtime.mode_router import ModeRouter, ModeSelection, TurnPerception
 from reso_agent.runtime.public_output import (
+    assemble_reconsidered,
     final_message,
     parse_public_output,
     public_output_contract,
@@ -34,6 +35,11 @@ from reso_agent.runtime.public_output import (
 from reso_agent.tracing.trace import TraceRecord
 
 _PROMPT_ROOT = Path(__file__).parents[1] / "prompts"
+
+
+def _sum_optional(first: int | None, second: int | None) -> int | None:
+    values = [value for value in (first, second) if value is not None]
+    return sum(values) if values else None
 
 
 @dataclass(frozen=True)
@@ -61,7 +67,7 @@ class AgentRuntime:
         reflection: ReflectionService | None = None,
         cadence_policy: ConversationCadencePolicy | None = None,
     ) -> None:
-        self._model_provider = model_provider or DeterministicModelProvider()
+        self._model_provider = model_provider or create_real_provider_from_env()
         self._policy = policy or DisclosurePolicy()
         self._mode_router = mode_router or ModeRouter()
         self._context_builder = context_builder or ContextBuilder()
@@ -119,35 +125,89 @@ class AgentRuntime:
             mode_prompt = (_PROMPT_ROOT / selection.mode.value / f"{version}.md").read_text(
                 encoding="utf-8"
             )
-            model_response = await self._model_provider.generate(
-                ModelRequest(
-                    mode=selection.mode,
-                    system_prompt=(
-                        f"{context.system_context}\n\n[Mode Contract]\n{mode_prompt}\n\n"
-                        "[Public Output Contract]\n"
-                        f"{public_output_contract(cadence, context)}\n\n"
-                        "Return one JSON object with an events array. Generate only "
-                        "public_reflection and message events; runtime owns status text. "
-                        "Never reveal private chain-of-thought or provider reasoning. Every "
-                        "public_reflection must cite allowedEvidence. Follow the length and "
-                        "cadence budgets strictly."
-                    ),
-                    user_message=request.message,
-                    recent_messages=context.recent_messages,
-                    memory_summaries=tuple(
-                        item.memory.summary for item in context.retrieved_memories
-                    ),
-                    is_correction=perception.is_correction,
-                    no_analysis=perception.no_analysis,
+            base_system_prompt = (
+                f"{context.system_context}\n\n[Mode Contract]\n{mode_prompt}\n\n"
+                "[Public Output Contract]\n"
+                f"{public_output_contract(cadence, context)}\n\n"
+                "Return one JSON object with an events array. Generate only "
+                "public_reflection and message events; runtime owns status text. "
+                "Never reveal private chain-of-thought or provider reasoning. Every "
+                "public_reflection must cite allowedEvidence. Follow the length and "
+                "cadence budgets strictly."
+            )
+            model_request = ModelRequest(
+                mode=selection.mode,
+                system_prompt=base_system_prompt,
+                user_message=request.message,
+                recent_messages=context.recent_messages,
+                memory_summaries=tuple(item.memory.summary for item in context.retrieved_memories),
+                is_correction=perception.is_correction,
+                no_analysis=perception.no_analysis,
+            )
+            if cadence.cadence is ConversationCadence.RECONSIDERED:
+                # Genuine re-consideration: a draft pass, a visible pause, then a
+                # second pass that re-examines the draft from another angle.
+                draft_response = await self._model_provider.generate(
+                    replace(
+                        model_request,
+                        generation_phase="draft",
+                        system_prompt=(
+                            f"{model_request.system_prompt}\n\n"
+                            "[Draft Phase] This call only produces the tentative first "
+                            'take: exactly one message event with position "tentative". '
+                            "Do not output a final message."
+                        ),
+                    )
                 )
-            )
-            public_output = parse_public_output(
-                raw=model_response.content,
-                decision=cadence,
-                context=context,
-            )
-            message = final_message(public_output)
-            model = model_response.metadata
+                if on_progress is not None and len(cadence.status_events) > 1:
+                    on_progress(cadence.status_events[1])
+                draft_text = draft_response.content.strip()
+                final_response = await self._model_provider.generate(
+                    replace(
+                        model_request,
+                        generation_phase="reconsider",
+                        draft_text=draft_text,
+                        system_prompt=(
+                            f"{model_request.system_prompt}\n\n"
+                            f"[Reconsider Phase] Your tentative first take was: {draft_text}\n"
+                            "Re-examine it from a different angle - check whether it "
+                            "concluded too fast or mixed fact with interpretation - then "
+                            'output exactly one message event with position "final" that '
+                            "states your revised stance. Do not repeat the draft."
+                        ),
+                    )
+                )
+                public_output = assemble_reconsidered(
+                    decision=cadence,
+                    context=context,
+                    draft_text=draft_text,
+                    final_text=final_response.content,
+                )
+                message = final_message(public_output)
+                model = ModelMetadata(
+                    provider=final_response.metadata.provider,
+                    model=final_response.metadata.model,
+                    latency_ms=(
+                        draft_response.metadata.latency_ms + final_response.metadata.latency_ms
+                    ),
+                    prompt_tokens=_sum_optional(
+                        draft_response.metadata.prompt_tokens,
+                        final_response.metadata.prompt_tokens,
+                    ),
+                    completion_tokens=_sum_optional(
+                        draft_response.metadata.completion_tokens,
+                        final_response.metadata.completion_tokens,
+                    ),
+                )
+            else:
+                model_response = await self._model_provider.generate(model_request)
+                public_output = parse_public_output(
+                    raw=model_response.content,
+                    decision=cadence,
+                    context=context,
+                )
+                message = final_message(public_output)
+                model = model_response.metadata
             reflection = self._reflection.reflect(
                 request=request,
                 is_correction=perception.is_correction,

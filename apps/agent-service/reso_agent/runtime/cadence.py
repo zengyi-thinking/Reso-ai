@@ -21,6 +21,54 @@ _RELATIONSHIP_MARKERS = ("关系", "朋友", "她", "他", "喜欢", "冷淡", "
 _LOW_STAKES_MARKERS = ("吃什么", "喝什么", "天气", "晚安", "早安", "在吗", "哈哈")
 _MEMORY_REQUEST_MARKERS = ("记得", "之前说过", "以前提过")
 
+# Runtime-owned status copy library. The model never authors status text; the
+# variants keep the rhythm alive without turning deliberation into a performance.
+_STATUS_LIBRARY: dict[AgentStatusPhase, tuple[str, ...]] = {
+    AgentStatusPhase.UNDERSTANDING: (
+        "我想先把这件事放慢一点看看…",
+        "正在想想这件事…",
+        "我先听懂你在说什么…",
+    ),
+    AgentStatusPhase.RECALLING: (
+        "想起了一件和你有关的事…",
+        "等等，我好像记得这个…",
+        "让我翻一下之前的记忆…",
+    ),
+    AgentStatusPhase.NOTICING: (
+        "我好像注意到了一个小变化…",
+        "有个细节让我停了一下…",
+        "这里有个东西轻轻响了一下…",
+    ),
+    AgentStatusPhase.COMPOSING: ("我在想怎么跟你说比较好…",),
+    AgentStatusPhase.RECONSIDERING: (
+        "等等，我再换一个角度看看。",
+        "……我再想一下，刚才那个说法可能太快了。",
+        "慢一点，我想再核对一次。",
+    ),
+}
+
+
+def _status_text(phase: AgentStatusPhase, message: str) -> str:
+    variants = _STATUS_LIBRARY[phase]
+    index = sum(ord(character) for character in message) % len(variants)
+    return variants[index]
+
+
+def _recall_text(context: BuiltContext, message: str) -> str:
+    """Recall status text grounded in what retrieval actually found."""
+    recalled = [
+        item for item in context.retrieved_memories if item.score.final >= PUBLIC_RECALL_MIN_SCORE
+    ]
+    if not recalled:
+        return _status_text(AgentStatusPhase.RECALLING, message)
+    top = recalled[0]
+    date_text = f"{top.memory.occurred_at.month}月{top.memory.occurred_at.day}日"
+    if top.memory.type is MemoryType.CORRECTION:
+        return f"翻到你 {date_text} 纠正过我的一次…"
+    if len(recalled) >= 2:
+        return f"找到 {len(recalled)} 条和你有关的记忆…"
+    return f"翻到你 {date_text} 说的事…"
+
 
 @dataclass(frozen=True)
 class CadenceDecision:
@@ -81,7 +129,8 @@ class ConversationCadencePolicy:
             )
 
         evidence_refs: tuple[str, ...] = (memory_ref,) if can_surface_memory and memory_ref else ()
-        if selection.mode is AgentMode.MIRROR and relation_topic:
+        serious_concern = relation_topic and len(message) >= 10
+        if relation_topic and (selection.mode is AgentMode.MIRROR or serious_concern):
             weak_memory = top_memory is None or top_memory.score.final < 0.62
             cooldown_clear = ConversationCadence.RECONSIDERED not in recent_cadences[-6:]
             if weak_memory and cooldown_clear and len(context.recent_messages) >= 2:
@@ -92,18 +141,22 @@ class ConversationCadencePolicy:
                     (
                         AgentStatusEvent(
                             phase=AgentStatusPhase.NOTICING,
-                            text="我好像注意到了一个小变化…",
+                            text=_status_text(AgentStatusPhase.NOTICING, message),
                         ),
                         AgentStatusEvent(
                             phase=AgentStatusPhase.RECONSIDERING,
-                            text="等等，我再换一个角度看看。",
+                            text=_status_text(AgentStatusPhase.RECONSIDERING, message),
                         ),
                     ),
                 )
 
         if can_surface_memory or selection.mode is AgentMode.MIRROR:
             phase = AgentStatusPhase.RECALLING if can_surface_memory else AgentStatusPhase.NOTICING
-            text = "想起了一件和你有关的事…" if can_surface_memory else "这个地方我想多看一眼…"
+            text = (
+                _recall_text(context, message)
+                if can_surface_memory
+                else _status_text(AgentStatusPhase.NOTICING, message)
+            )
             return CadenceDecision(
                 ConversationCadence.REFLECTIVE,
                 "relevant memory or invited reflection",
@@ -118,7 +171,7 @@ class ConversationCadencePolicy:
             (
                 AgentStatusEvent(
                     phase=AgentStatusPhase.UNDERSTANDING,
-                    text="我想先把这件事放慢一点看看…",
+                    text=_status_text(AgentStatusPhase.UNDERSTANDING, message),
                 ),
             ),
         )

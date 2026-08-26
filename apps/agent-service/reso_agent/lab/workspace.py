@@ -11,6 +11,7 @@ from reso_agent.contracts import (
     AgentTurnRequest,
     EvalCheck,
     LabMemoryUpdate,
+    LabMemoryWrite,
     LabPatchDecision,
     LabPersona,
     LabSession,
@@ -32,7 +33,7 @@ from reso_agent.fixtures.alice import (
     CORRECTION_ID,
     alice_fixture,
 )
-from reso_agent.models.router import model_provider_for
+from reso_agent.models.provider import ModelProvider, create_real_provider_from_env
 from reso_agent.runtime.pipeline import AgentRuntime, RuntimeTurnDetails
 
 
@@ -40,7 +41,6 @@ from reso_agent.runtime.pipeline import AgentRuntime, RuntimeTurnDetails
 class _SessionState:
     id: UUID
     user: LabUser
-    provider: str
     created_at: datetime
     persona_version_id: UUID
     persona_version: str
@@ -53,7 +53,8 @@ class _SessionState:
 class LabWorkspace:
     """Ephemeral debug state for synthetic fixtures; never a production source of truth."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, model_provider: ModelProvider | None = None) -> None:
+        self._model_provider = model_provider or create_real_provider_from_env()
         self._sessions: dict[UUID, _SessionState] = {}
 
     def users(self) -> list[LabUser]:
@@ -63,8 +64,6 @@ class LabWorkspace:
         fixture = alice_fixture()
         if request.user_slug != fixture.user.slug:
             raise KeyError(f"Unknown synthetic user: {request.user_slug}")
-        if request.provider not in {"deterministic", "real"}:
-            raise ValueError("provider must be deterministic or real")
         # Start before the correction so Day 7 can visibly change retrieval and Persona.
         initial_memories = [
             memory.model_copy(deep=True)
@@ -74,7 +73,6 @@ class LabWorkspace:
         state = _SessionState(
             id=uuid4(),
             user=fixture.user,
-            provider=request.provider,
             created_at=datetime.now(UTC),
             persona_version_id=fixture.persona_version_id,
             persona_version="1.0",
@@ -122,7 +120,7 @@ class LabWorkspace:
             ),
             recent_messages=self._recent_messages(state.turns),
         )
-        runtime = AgentRuntime(model_provider=model_provider_for(state.provider))
+        runtime = AgentRuntime(model_provider=self._model_provider)
         details = await runtime.turn_with_details(
             AgentTurnRequest(
                 request_id=message_id,
@@ -145,7 +143,7 @@ class LabWorkspace:
             ),
             on_progress=on_progress,
         )
-        memory_ids = self._commit_lab_memories(state, details, message_id)
+        memory_ids, memory_writes = self._commit_lab_memories(state, details, message_id)
         state.pending_patches.extend(details.response.persona_patch_candidates)
         turn = LabTurn(
             id=uuid4(),
@@ -161,6 +159,7 @@ class LabWorkspace:
             context_summary=details.context.summary,
             model=details.model,
             memory_candidate_ids=memory_ids,
+            memory_writes=memory_writes,
             persona_patch_candidates=details.response.persona_patch_candidates,
             relationship_candidates=details.response.relationship_candidates,
             cadence=details.response.cadence,
@@ -237,7 +236,7 @@ class LabWorkspace:
         return LabSession(
             id=state.id,
             user=state.user,
-            provider=state.provider,
+            provider=self._model_provider.name,
             created_at=state.created_at,
             persona=LabPersona(version=state.persona_version, content=state.persona),
             pending_patches=state.pending_patches,
@@ -258,11 +257,20 @@ class LabWorkspace:
 
     def _commit_lab_memories(
         self, state: _SessionState, details: RuntimeTurnDetails, message_id: UUID
-    ) -> list[UUID]:
+    ) -> tuple[list[UUID], list[LabMemoryWrite]]:
         identifiers: list[UUID] = []
+        writes: list[LabMemoryWrite] = []
         for candidate in details.response.memory_candidates:
             identifier = uuid4()
             identifiers.append(identifier)
+            writes.append(
+                LabMemoryWrite(
+                    id=identifier,
+                    type=candidate.type,
+                    summary=candidate.summary,
+                    requires_review=candidate.requires_review,
+                )
+            )
             conflicts = []
             topics: list[str] = []
             if candidate.type is MemoryType.CORRECTION:
@@ -284,7 +292,7 @@ class LabWorkspace:
                     conflicts_with=conflicts,
                 )
             )
-        return identifiers
+        return identifiers, writes
 
     def _eval(self, details: RuntimeTurnDetails) -> list[EvalCheck]:
         response = details.response.message

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AgentPublicEventSchema, ConversationCadenceSchema } from "./agent.js";
 import { AgentModeSchema, IsoDateTimeSchema, UuidSchema } from "./common.js";
-import { MemoryContextSchema, RetrievalScoreSchema } from "./memory.js";
+import { MemoryContextSchema, MemoryTypeSchema, RetrievalScoreSchema } from "./memory.js";
 import { PersonaContentSchema, PersonaPatchCandidateSchema } from "./persona.js";
 
 export const LabUserSchema = z.object({
@@ -14,7 +14,6 @@ export type LabUser = z.infer<typeof LabUserSchema>;
 
 export const LabSessionCreateRequestSchema = z.object({
   userSlug: z.string().min(1),
-  provider: z.enum(["deterministic", "real"]).default("deterministic"),
 });
 export type LabSessionCreateRequest = z.infer<typeof LabSessionCreateRequestSchema>;
 
@@ -52,6 +51,16 @@ export const LabTurnSchema = z.object({
     completionTokens: z.number().int().nonnegative().nullable(),
   }),
   memoryCandidateIds: z.array(UuidSchema),
+  memoryWrites: z
+    .array(
+      z.object({
+        id: UuidSchema,
+        type: MemoryTypeSchema,
+        summary: z.string().min(1),
+        requiresReview: z.boolean(),
+      }),
+    )
+    .default([]),
   personaPatchCandidates: z.array(PersonaPatchCandidateSchema),
   relationshipCandidates: z.array(
     z.object({ summary: z.string(), reason: z.string(), confidence: z.number() }),
@@ -77,6 +86,14 @@ export const LabSessionSchema = z.object({
   turns: z.array(LabTurnSchema),
 });
 export type LabSession = z.infer<typeof LabSessionSchema>;
+
+export const LabMemoryWriteSchema = z.object({
+  id: UuidSchema,
+  type: MemoryTypeSchema,
+  summary: z.string().min(1),
+  requiresReview: z.boolean(),
+});
+export type LabMemoryWrite = z.infer<typeof LabMemoryWriteSchema>;
 
 export const LabMemoryUpdateSchema = z.object({ enabled: z.boolean() });
 export type LabMemoryUpdate = z.infer<typeof LabMemoryUpdateSchema>;

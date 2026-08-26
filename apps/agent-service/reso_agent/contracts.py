@@ -110,10 +110,18 @@ class AgentStreamErrorEvent(ContractModel):
     retryable: bool
 
 
+class AgentMessageDeltaEvent(ContractModel):
+    """Transport-level chunk of a message; the complete event always follows."""
+
+    type: Literal["message_delta"] = "message_delta"
+    text: str = Field(min_length=1, max_length=120)
+
+
 AgentStreamEvent = Annotated[
     AgentStatusEvent
     | AgentPublicReflectionEvent
     | AgentMessageEvent
+    | AgentMessageDeltaEvent
     | AgentStreamCompleteEvent
     | AgentStreamErrorEvent,
     Field(discriminator="type"),
@@ -301,13 +309,19 @@ class LabUser(ContractModel):
 
 class LabSessionCreateRequest(ContractModel):
     user_slug: str
-    provider: str = "deterministic"
 
 
 class LabTurnRequest(ContractModel):
     message: str = Field(min_length=1, max_length=20_000)
     requested_mode: AgentMode | None = None
     replay_turn_id: UUID | None = None
+
+
+class LabMemoryWrite(ContractModel):
+    id: UUID
+    type: MemoryType
+    summary: str = Field(min_length=1)
+    requires_review: bool
 
 
 class LabTurn(ContractModel):
@@ -324,6 +338,7 @@ class LabTurn(ContractModel):
     context_summary: ContextSummary
     model: ModelMetadata
     memory_candidate_ids: list[UUID]
+    memory_writes: list[LabMemoryWrite] = Field(default_factory=list)
     persona_patch_candidates: list[PersonaPatchCandidate]
     relationship_candidates: list[RelationshipUpdateCandidate]
     cadence: ConversationCadence

@@ -72,6 +72,12 @@ export const AgentPublicOutputSchema = z
   });
 export type AgentPublicOutput = z.infer<typeof AgentPublicOutputSchema>;
 
+export const AgentMessageDeltaEventSchema = z.object({
+  type: z.literal("message_delta"),
+  text: z.string().min(1).max(120),
+});
+export type AgentMessageDeltaEvent = z.infer<typeof AgentMessageDeltaEventSchema>;
+
 export const AgentStreamCompleteEventSchema = z.object({
   type: z.literal("complete"),
   turnId: UuidSchema,
@@ -89,6 +95,7 @@ export const AgentStreamEventSchema = z.discriminatedUnion("type", [
   AgentStatusEventSchema,
   AgentPublicReflectionEventSchema,
   AgentMessageEventSchema,
+  AgentMessageDeltaEventSchema,
   AgentStreamCompleteEventSchema,
   AgentStreamErrorEventSchema,
 ]);

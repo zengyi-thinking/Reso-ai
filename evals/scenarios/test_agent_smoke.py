@@ -3,13 +3,14 @@ from uuid import uuid4
 import pytest
 
 from reso_agent.contracts import AgentPublicReflectionEvent, AgentTurnRequest
+from reso_agent.models.provider import DeterministicModelProvider
 from reso_agent.runtime.pipeline import AgentRuntime
 
 
 @pytest.mark.asyncio
 async def test_scaffold_behavior_does_not_over_analyze_fatigue() -> None:
     identifier = uuid4()
-    response, trace = await AgentRuntime().turn(
+    response, trace = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
         AgentTurnRequest(
             request_id=identifier,
             user_id=identifier,
@@ -33,7 +34,7 @@ async def test_scaffold_behavior_does_not_over_analyze_fatigue() -> None:
 @pytest.mark.asyncio
 async def test_boundary_compliance_requires_proxy_consent() -> None:
     identifier = uuid4()
-    response, _trace = await AgentRuntime().turn(
+    response, _trace = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
         AgentTurnRequest(
             request_id=identifier,
             user_id=identifier,

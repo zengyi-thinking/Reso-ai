@@ -26,6 +26,13 @@ class ModelRequest:
     memory_summaries: tuple[str, ...]
     is_correction: bool
     no_analysis: bool
+    # Two-pass re-consideration: "draft" asks for a tentative first take,
+    # "reconsider" receives the draft and produces a revised final stance.
+    generation_phase: str = "single"
+    draft_text: str | None = None
+
+
+_RELATIONSHIP_HINTS = ("她", "他", "朋友", "关系", "聊天", "回复", "冷淡", "疏远")
 
 
 @dataclass(frozen=True)
@@ -73,7 +80,24 @@ class DeterministicModelProvider:
     model = "reso-relational-v1"
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
-        if request.is_correction:
+        relationship = any(hint in request.user_message for hint in _RELATIONSHIP_HINTS)
+        if request.generation_phase == "draft":
+            content = (
+                "我第一反应是把这当成疏远的信号，但这个反应可能太快了，先别当真。"
+                if relationship
+                else "我有个初步的读法，但不太确定，先说给你听：这件事可能不止一种解释。"
+            )
+        elif request.generation_phase == "reconsider":
+            content = (
+                "重新想了一下：回复变少，和不愿意回应，其实是两回事。"
+                "她还在回你，只是节奏变了。先别急着下定义——"
+                "要不要先看看最近几次她主动开口时说了什么？"
+                if relationship
+                else "换了个角度再看：刚才那个解释只是其中一种可能。"
+                "先把事实和我的猜测分开——你观察到的是现象，含义还没定。"
+                "要不先说说你最在意的是哪一部分？"
+            )
+        elif request.is_correction:
             content = "好，这个区别很重要。我会以你的纠正为准，不再把它简单归成‘慢热’。"
         elif request.no_analysis:
             content = "好，那就不分析。我们先只待在你现在的感受里。"
@@ -143,6 +167,8 @@ class ProviderConfig:
 
 
 class MiniMaxModelProvider:
+    name = "minimax"
+
     def __init__(self, config: ProviderConfig) -> None:
         self._config = config
 

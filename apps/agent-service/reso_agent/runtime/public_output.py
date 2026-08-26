@@ -147,6 +147,32 @@ def parse_public_output(
     return AgentPublicOutput(cadence=decision.cadence, events=ordered[:5])
 
 
+def assemble_reconsidered(
+    *,
+    decision: CadenceDecision,
+    context: BuiltContext,
+    draft_text: str,
+    final_text: str,
+) -> AgentPublicOutput:
+    """Assemble the public sequence for a genuine two-pass re-consideration.
+
+    The tentative message and the final message come from two separate model
+    calls, so the visible "let me think again" reflects real re-examination.
+    """
+    reflection = ConversationCadencePolicy().safe_reflection(decision=decision, context=context)
+    statuses = list(decision.status_events)
+    events: list[AgentPublicEvent] = []
+    if statuses:
+        events.append(statuses[0])
+    if reflection is not None:
+        events.append(reflection)
+    events.append(AgentMessageEvent(position="tentative", text=draft_text.strip()))
+    if len(statuses) > 1:
+        events.append(statuses[1])
+    events.append(AgentMessageEvent(position="final", text=final_text.strip()))
+    return AgentPublicOutput(cadence=ConversationCadence.RECONSIDERED, events=events[:5])
+
+
 def final_message(output: AgentPublicOutput) -> str:
     final = next(
         event
