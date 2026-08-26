@@ -4,24 +4,41 @@
   "private": true,
   "type": "module",
   "main": "./dist/src/server.js",
+  "exports": {
+    "./agent-client/factory": {
+      "types": "./dist/src/agent-client/factory.d.ts",
+      "import": "./dist/src/agent-client/factory.js"
+    },
+    "./product/postgres-repository": {
+      "types": "./dist/src/product/postgres-repository.d.ts",
+      "import": "./dist/src/product/postgres-repository.js"
+    },
+    "./product/tea-party-service": {
+      "types": "./dist/src/product/tea-party-service.d.ts",
+      "import": "./dist/src/product/tea-party-service.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "db:migrate": "tsx src/database/migrate.ts",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "lint": "eslint src tests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run tests/app.test.ts tests/agent-client.test.ts"
+    "test": "vitest run --dir tests"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
     "@reso/config": "workspace:*",
     "@reso/contracts": "workspace:*",
     "fastify": "^5.12.1",
+    "pg": "^8.16.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@reso/test-fixtures": "workspace:*",
     "@types/node": "^26.3.0",
+    "@types/pg": "^8.15.5",
     "tsx": "^4.23.12",
     "vitest": "^4.1.11"
   }

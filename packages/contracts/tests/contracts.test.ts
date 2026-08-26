@@ -7,7 +7,14 @@ import {
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
   PersonaPatchCandidateSchema,
+  AnalyzeIncomingRequestSchema,
+  AnalyzeAssistResponseSchema,
   LabSessionSchema,
+  PolishDraftResponseSchema,
+  ProductErrorResponseSchema,
+  SocialActRequestSchema,
+  SocialActResponseSchema,
+  TeaPartyResponseSchema,
 } from "../src/index.js";
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
@@ -110,5 +117,89 @@ describe("Reso.AI contracts", () => {
 
     expect(lab.success).toBe(true);
     expect("chainOfThought" in (lab.success ? lab.data : {})).toBe(false);
+  });
+
+  it("freezes the v0.1 assist contract without an auto-send field", () => {
+    const request = AnalyzeIncomingRequestSchema.parse({
+      requestId: id,
+      idempotencyKey: "user-1:req-1",
+      requesterUserId: id,
+      connectionId: id,
+      sourceMessageId: id,
+      sourceText: "周末要不要一起喝咖啡？",
+      senderUserId: id,
+      agentId: id,
+      traceId: id,
+    });
+    const polished = PolishDraftResponseSchema.parse({
+      candidates: [{ id: "draft-1", text: "周末有空的话，要不要一起喝杯咖啡？" }],
+      traceId: id,
+    });
+
+    expect(request.sourceText).toContain("咖啡");
+    expect("send" in polished).toBe(false);
+    expect("messageId" in polished).toBe(false);
+  });
+
+  it("returns the same Assist task state while an idempotent request is still running", () => {
+    const response = AnalyzeAssistResponseSchema.parse({
+      requestId: id,
+      status: "running",
+      result: null,
+      traceId: id,
+    });
+
+    expect(response.status).toBe("running");
+    expect(response.result).toBeNull();
+  });
+
+  it("caps tea-party turns at eight and requires a disclosure decision", () => {
+    const request = SocialActRequestSchema.parse({
+      missionId: id,
+      connectionId: id,
+      turnNo: 8,
+      speakerAgentId: id,
+      listenerAgentId: id,
+      priorMessages: [],
+      disclosureLevel: "L2_SOCIAL",
+      maxContentLength: 2_000,
+      idempotencyKey: "mission:turn:8",
+      traceId: id,
+    });
+    const response = SocialActResponseSchema.parse({
+      speakerAgentId: id,
+      content: "受控输出",
+      disclosure: { decision: "ALLOW", level: "L2_SOCIAL", reasonCode: "allowed" },
+      shouldStop: true,
+      stopReason: "max_turns",
+      traceId: id,
+      agentVersionId: null,
+    });
+
+    expect(request.turnNo).toBe(8);
+    expect(response.disclosure.decision).toBe("ALLOW");
+    expect(SocialActRequestSchema.safeParse({ ...request, turnNo: 9 }).success).toBe(false);
+  });
+
+  it("defines stable product status and error envelopes", () => {
+    expect(
+      TeaPartyResponseSchema.parse({
+        status: "not_available",
+        sessionId: null,
+        messages: [],
+        summary: null,
+        completedAt: null,
+        retryable: false,
+        traceId: null,
+      }).status,
+    ).toBe("not_available");
+    expect(
+      ProductErrorResponseSchema.parse({
+        code: "AGENT_TIMEOUT",
+        message: "Agent timed out",
+        traceId: id,
+        retryable: true,
+      }).retryable,
+    ).toBe(true);
   });
 });

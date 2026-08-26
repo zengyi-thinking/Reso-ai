@@ -17,6 +17,9 @@ PostgreSQL + pgvector 保存正式事实和后续向量检索，Redis 用于简�
 - Privacy：`consent_grants`、`disclosure_rules`。
 - Quality：`agent_traces`、`agent_evaluations`。
 - Async delivery：`event_outbox`、`event_consumptions`、`dead_letter_events`。
+- Product connection：`connections`、`connection_messages`、`user_blocks`。
+- Assist / Tea Party：`agent_assist_requests`、扩展后的 `social_missions`、`agent_interactions`。
+- Operations：`user_sessions`、`product_audit_log`、`rate_limit_buckets`。
 
 ## Ownership
 
@@ -37,4 +40,16 @@ Product API/Backend Worker 是正式表的唯一写入者。Agent Service 只接
 
 `0001_enable_extensions.sql` 启用 pgcrypto/vector；`0002_initial_schema.sql` 建立第一版结构；`0003_event_outbox.sql` 建立 committed event、消费幂等与 dead-letter 接缝。合并后只追加新 migration，禁止修改历史文件。
 
-`pnpm test:database` 使用独立临时 Compose project 运行全部 migration、应用合成 seed、检查核心/outbox 表并验证 Redis 健康，结束后只删除该临时 project 的 volume。已有环境的增量发布 runner 仍属于 Stage 1。
+`0004_post_connection_tea_party.sql` 增加真人 Connection、Assist、有限轮茶话会、Session、审计和限流结构，并复用 `0003_event_outbox.sql` 已建立的 committed event、消费幂等和 dead-letter 接缝。后续只追加新 migration，禁止修改历史文件。
+
+`pnpm test:database` 使用独立临时 Compose project 运行全部 migration、应用合成 seed、检查核心/outbox 表并验证 Redis 健康，结束后只删除该临时 project 的 volume。
+
+正式升级使用：
+
+```bash
+pnpm --filter @reso/api db:migrate
+```
+
+Migration Runner 使用 PostgreSQL advisory lock 防止多个实例同时迁移，并在 `schema_migrations` 保存文件名、SHA-256 校验和和应用时间。已经应用的 Migration 如果内容被改写，Runner 会拒绝继续。
+
+PostgreSQL 18 的数据卷必须挂载到 `/var/lib/postgresql`；旧的 `/var/lib/postgresql/data` 路径会使 PG18 容器拒绝启动。

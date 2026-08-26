@@ -16,6 +16,12 @@ export const EventTypeSchema = z.enum([
   "recommendation.created",
   "consent.granted",
   "consent.revoked",
+  "relationship.blocked",
+  "tea_party.started",
+  "tea_party.ready",
+  "tea_party.failed",
+  "agent_assist.completed",
+  "agent_assist.failed",
 ]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
