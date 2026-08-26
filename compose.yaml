@@ -1,0 +1,74 @@
+name: reso-ai
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: reso
+      POSTGRES_USER: reso
+      POSTGRES_PASSWORD: reso
+    ports:
+      - "5432:5432"
+    volumes:
+      - reso-postgres:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reso -d reso"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  redis:
+    image: redis:8.2-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: infra/docker/agent-service.Dockerfile
+    environment:
+      APP_ENV: development
+      LLM_PROVIDER: mock
+      TRACE_ENABLED: "false"
+    ports:
+      - "8000:8000"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    environment:
+      APP_ENV: development
+      API_PORT: 3000
+      DATABASE_URL: postgresql://reso:reso@postgres:5432/reso
+      REDIS_URL: redis://redis:6379/0
+      AGENT_PROVIDER: mock
+      AGENT_SERVICE_URL: http://agent-service:8000
+      TRACE_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-service:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  reso-postgres:

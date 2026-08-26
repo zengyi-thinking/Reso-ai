@@ -1,0 +1,12 @@
+:root {
+  --reso-color-cream: #fff8e8;
+  --reso-color-sky: #a9d8f5;
+  --reso-color-sky-deep: #5b9ec9;
+  --reso-color-leaf: #bfd9b5;
+  --reso-color-apricot: #f4c39d;
+  --reso-color-ink: #314b57;
+  --reso-color-mist: #eef5f4;
+  --reso-radius-soft: 18px;
+  --reso-radius-card: 28px;
+  --reso-shadow-soft: 0 18px 45px rgba(62, 91, 102, 0.12);
+}

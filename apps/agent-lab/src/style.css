@@ -1,0 +1,48 @@
+:root {
+  color: #d8e7e8;
+  background: #17272d;
+  font-family: ui-monospace, monospace;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+main {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 64px 0;
+}
+.eyebrow {
+  color: #8fbfc1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(42px, 8vw, 86px);
+  letter-spacing: -0.06em;
+}
+.lead {
+  max-width: 620px;
+  color: #9eb2b6;
+}
+.trace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 42px;
+}
+article {
+  display: grid;
+  gap: 24px;
+  min-height: 126px;
+  padding: 18px;
+  border: 1px solid #365058;
+  border-radius: 12px;
+  background: #1d3138;
+}
+article span {
+  color: #789399;
+  font-size: 12px;
+}

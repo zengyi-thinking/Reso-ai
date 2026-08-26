@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://reso:reso@localhost:5432/reso
+      REDIS_URL: redis://localhost:6379/0
+      AGENT_PROVIDER: mock
+      AGENT_SERVICE_URL: http://localhost:8000
+      TRACE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.6"
+          enable-cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --project apps/agent-service --frozen
+      - run: pnpm check

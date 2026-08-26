@@ -1,0 +1,30 @@
+node_modules/
+.turbo/
+dist/
+coverage/
+.vite/
+.env
+.env.*
+!.env.example
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated eval output
+evals/reports/*
+!evals/reports/.gitkeep
+
+# Local upstream reference repositories (independent Git history)
+references/

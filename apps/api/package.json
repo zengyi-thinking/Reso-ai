@@ -1,0 +1,28 @@
+{
+  "name": "@reso/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/src/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/src/server.js",
+    "lint": "eslint src tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run tests"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@reso/config": "workspace:*",
+    "@reso/contracts": "workspace:*",
+    "fastify": "^5.12.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@reso/test-fixtures": "workspace:*",
+    "@types/node": "^26.3.0",
+    "tsx": "^4.23.12",
+    "vitest": "^4.1.11"
+  }
+}
