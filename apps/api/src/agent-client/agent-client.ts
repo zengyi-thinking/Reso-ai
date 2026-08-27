@@ -3,6 +3,9 @@ import type {
   AgentReflectionResponse,
   AgentTurnRequest,
   AgentTurnResponse,
+  AgentStatusEvent,
+  EmbeddingsRequest,
+  EmbeddingsResponse,
   PersonaInitializeRequest,
   PersonaPatchCandidate,
   PersonaVersion,
@@ -18,9 +21,14 @@ import type {
   SocialEvaluateResponse,
   PersonalManualCandidate,
   PersonalManualGenerationRequest,
+  QuickStartPersonaDraftRequest,
+  QuickStartPersonaDraftResponse,
 } from "@reso/contracts";
 
 export interface IAgentClient {
+  initializeQuickStartPersona(
+    request: QuickStartPersonaDraftRequest,
+  ): Promise<QuickStartPersonaDraftResponse>;
   analyzeIncoming(request: AnalyzeIncomingRequest): Promise<AnalyzeIncomingResponse>;
   polishDraft(request: PolishDraftRequest): Promise<PolishDraftResponse>;
   actSocially(request: SocialActRequest): Promise<SocialActResponse>;
@@ -28,8 +36,12 @@ export interface IAgentClient {
   generatePersonalManual(
     request: PersonalManualGenerationRequest,
   ): Promise<PersonalManualCandidate>;
-  turn(request: AgentTurnRequest): Promise<AgentTurnResponse>;
+  turn(
+    request: AgentTurnRequest,
+    onProgress?: (event: AgentStatusEvent) => void,
+  ): Promise<AgentTurnResponse>;
   reflect(request: AgentReflectionRequest): Promise<AgentReflectionResponse>;
+  embedTexts(request: EmbeddingsRequest): Promise<EmbeddingsResponse>;
   initializePersona(request: PersonaInitializeRequest): Promise<PersonaVersion>;
   suggestPersonaPatch(request: AgentReflectionRequest): Promise<PersonaPatchCandidate[]>;
   runSocialAction(request: SocialMission): Promise<SocialMissionResult>;

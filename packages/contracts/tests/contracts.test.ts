@@ -5,10 +5,14 @@ import {
   AgentTurnRequestSchema,
   AgentTurnResponseSchema,
   AgentPublicOutputSchema,
+  AgentStatusEventSchema,
   AgentStreamEventSchema,
+  AgentReflectionRequestSchema,
+  AgentReflectionResponseSchema,
   DisclosureDecisionSchema,
   EventEnvelopeSchema,
   LabTurnSchema,
+  MemoryContextSchema,
   PersonaPatchCandidateSchema,
   AnalyzeIncomingRequestSchema,
   AnalyzeAssistResponseSchema,
@@ -22,6 +26,100 @@ import {
   JourneyCompletedEventSchema,
   PersonalManualContentSchema,
 } from "../src/index.js";
+
+import {
+  EmailVerifyCodeRequestSchema,
+  GuestOnboardingSessionSchema,
+  ProductTurnRequestSchema,
+  QuickStartAnswersSchema,
+} from "../src/vertical-slice.js";
+
+describe("Vertical Slice contracts", () => {
+  it("normalizes email and requires a six digit one-time code", () => {
+    expect(
+      EmailVerifyCodeRequestSchema.parse({ email: "  USER@Example.COM ", code: "042619" }),
+    ).toMatchObject({ email: "user@example.com", code: "042619" });
+    expect(() =>
+      EmailVerifyCodeRequestSchema.parse({ email: "user@example.com", code: "12345" }),
+    ).toThrow();
+  });
+
+  it("treats MBTI and zodiac as optional quick-start evidence", () => {
+    expect(
+      QuickStartAnswersSchema.parse({
+        relationshipGoal: "建立真诚的长期关系",
+        communicationPreference: "有内容、直接但温和",
+        socialPreference: "少量但深入的交流",
+      }),
+    ).toMatchObject({ mbti: null, zodiac: null });
+  });
+
+  it("requires opaque guest and idempotency tokens", () => {
+    expect(() =>
+      GuestOnboardingSessionSchema.parse({ guestToken: "short", onboarding: {} }),
+    ).toThrow();
+    expect(() => ProductTurnRequestSchema.parse({ message: "你好" })).toThrow();
+  });
+
+  it("supports an optional deep relationship public process", () => {
+    expect(
+      ProductTurnRequestSchema.parse({
+        message: "帮我认真看看我们适不适合",
+        clientMessageId: "client-1",
+        publicProcessMode: "relationship_deep_dive",
+      }),
+    ).toMatchObject({ publicProcessMode: "relationship_deep_dive" });
+    expect(
+      AgentStatusEventSchema.parse({
+        type: "status",
+        phase: "noticing",
+        step: 2,
+        label: "先看看边界",
+        text: "我先确认一下，哪些差异是不能勉强的。",
+      }),
+    ).toMatchObject({ step: 2, label: "先看看边界" });
+  });
+});
+
+describe("Growth loop contracts", () => {
+  const reflectionFixture = (name: string): { request: unknown; response: unknown } =>
+    readFixture(name);
+
+  it("accepts the shared valid AgentReflection golden fixture", () => {
+    const fixture = reflectionFixture("reflection.valid.json");
+    expect(AgentReflectionRequestSchema.safeParse(fixture.request).success).toBe(true);
+    expect(AgentReflectionResponseSchema.safeParse(fixture.response).success).toBe(true);
+  });
+
+  it("rejects the shared invalid AgentReflection golden fixture", () => {
+    const fixture = reflectionFixture("reflection.invalid.json");
+    expect(AgentReflectionRequestSchema.safeParse(fixture.request).success).toBe(false);
+    expect(AgentReflectionResponseSchema.safeParse(fixture.response).success).toBe(false);
+  });
+
+  it("keeps memory embeddings optional so legacy contexts stay valid", () => {
+    const base = {
+      id,
+      userId: id,
+      type: "correction",
+      summary: "用户明确纠正过一次解释。",
+      sourceEventId: null,
+      occurredAt: "2026-08-27T09:00:00+08:00",
+      createdAt: "2026-08-27T09:00:00+08:00",
+    };
+    expect(MemoryContextSchema.safeParse(base).success).toBe(true);
+    expect(MemoryContextSchema.safeParse({ ...base, embedding: [0.1, -0.2, 0.3] }).success).toBe(
+      true,
+    );
+    expect(MemoryContextSchema.safeParse({ ...base, embedding: ["not-a-number"] }).success).toBe(
+      false,
+    );
+  });
+
+  it("defaults lab tool names to an empty allowlist", () => {
+    expect(LabTurnSchema.shape.toolNames.parse(undefined)).toEqual([]);
+  });
+});
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/", import.meta.url));

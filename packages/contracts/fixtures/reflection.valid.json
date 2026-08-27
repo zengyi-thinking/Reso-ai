@@ -1,0 +1,48 @@
+{
+  "request": {
+    "userId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "conversationId": "0198d4f3-5cf6-7f2e-aef8-dbc910a31147",
+    "messageIds": ["0198e7a1-1111-7c52-95cc-7ff4f6f93a01", "0198e7a1-2222-7c52-95cc-7ff4f6f93a02"],
+    "transcript": [
+      {
+        "id": "0198e7a1-1111-7c52-95cc-7ff4f6f93a01",
+        "role": "user",
+        "content": "上次说我慢热，其实我只是不喜欢无意义的社交。"
+      },
+      {
+        "id": "0198e7a1-2222-7c52-95cc-7ff4f6f93a02",
+        "role": "agent",
+        "content": "这个区别很重要，我会记住，但不会把一次表达直接写成人格结论。"
+      }
+    ],
+    "persona": null,
+    "memories": []
+  },
+  "response": {
+    "memoryCandidates": [
+      {
+        "type": "correction",
+        "summary": "User corrected a prior interpretation as dislike of meaningless socializing.",
+        "evidenceMessageIds": ["0198e7a1-1111-7c52-95cc-7ff4f6f93a01"],
+        "confidence": 0.92,
+        "requiresReview": true
+      }
+    ],
+    "personaPatchCandidates": [
+      {
+        "id": "0198e7a1-3333-7c52-95cc-7ff4f6f93a03",
+        "userId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+        "fromVersionId": "0198d4f3-9ab2-7c52-95cc-7ff4f6f93a04",
+        "path": "/confirmedPatterns/socialRhythm",
+        "oldValue": "慢热",
+        "proposedValue": "对低价值社交主动性低",
+        "reason": "用户在对话中明确纠正了此前的解释。",
+        "evidenceIds": ["0198e7a1-1111-7c52-95cc-7ff4f6f93a01"],
+        "confidence": 0.86,
+        "status": "pending",
+        "createdAt": "2026-08-27T09:00:00+08:00",
+        "confirmedAt": null
+      }
+    ]
+  }
+}

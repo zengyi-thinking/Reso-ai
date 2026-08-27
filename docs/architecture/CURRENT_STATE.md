@@ -44,11 +44,18 @@
 - Agent Runtime 是 typed deterministic bootstrap，trace 使用 fail-closed allowlist；尚不启用真实模型、检索和工具执行。
 - Web/API/Agent Docker images 已构建并通过隔离网络 HTTP smoke；详细结果见 [Foundation 验收记录](FOUNDATION_VERIFICATION.md)。
 
+## 成长闭环落地后状态（2026-08-27）
+
+- `/v1/agent/reflect` 与 `/v1/persona/suggest-patch` 已是真实实现：`runtime/reflection_tasks.py` 配合版本化 Prompt `prompts/reflection/v1.md`，evidence 强制引用 transcript 内 message id，候选统一 pending + requiresReview。
+- Worker 经 `message.created` Outbox 驱动成长闭环：会话水位之上累计用户消息达到 `WORKER_REFLECTION_THRESHOLD`（默认 4）触发一次 reflect，候选写入 memory_candidates / persona_patch_candidates 并推进 watermark。
+- Memory Retrieval 升级为可解释 lexical baseline + 可选向量混合；Embedding 计算全部收在 Agent Service 内部端点 `/v1/embeddings`（固定 1536 维）。
+- Tools Registry 上线首个确定性工具 `memory_deep_recall`，TraceRecord 已填充 `tool_names`。
+- `/api/memory-candidates*` 与 `/api/persona-patches*` 四条审阅路由打通 Candidate → 用户决定链路。
+
 ## 下一阶段技术债与耦合点
 
-1. Journey、Persona 与 Conversation 目前没有正式 Product API repository/command/persistence 实现。
-2. 原生 SQL 已有干净 schema 测试，但已有环境的生产 migration runner、回滚/前滚发布流程仍未实现。
-3. outbox/Worker 语义已固定，PostgreSQL claim/publish 与 Redis Streams adapter 尚未接线。
-4. Web 是品牌/路由 v0；尚未完成 reference 美术资产许可清单、正式 Journey 状态和服务端持久化。
-5. 真实模型 provider、授权 Context read port、Memory Retrieval、生产 trace sink 与成本/超时策略尚未实现。
-6. 生产认证、服务身份、数据删除传播与 Consent 生命周期需要在接触真实用户数据前完成。
+1. 生产 trace sink 与成本/超时策略尚未实现。
+2. outbox/Worker 语义已固定，PostgreSQL claim/publish 与 Redis Streams adapter 尚未接线。
+3. 数据删除传播与 Consent 生命周期需要在接触真实用户数据前补齐。
+4. Growth Loop 尚缺 Persona Version bump 流程：patch accept 只标记 accepted，版本晋升待做。
+5. 社交任务（social act/evaluate）仍为 stub；knowledge provider 为空实现，corpus 尚未接入检索。

@@ -21,8 +21,11 @@ from reso_agent.contracts import (
     AgentStreamEvent,
     AgentTurnRequest,
     AgentTurnResponse,
+    AgentTurnResultEvent,
     AnalyzeIncomingRequest,
     AnalyzeIncomingResponse,
+    EmbeddingsRequest,
+    EmbeddingsResponse,
     LabMemoryUpdate,
     LabPatchDecision,
     LabSession,
@@ -37,6 +40,8 @@ from reso_agent.contracts import (
     PersonaVersion,
     PolishDraftRequest,
     PolishDraftResponse,
+    QuickStartPersonaDraftRequest,
+    QuickStartPersonaDraftResponse,
     SocialActRequestV1,
     SocialActResponseV1,
     SocialEvaluateRequestV1,
@@ -50,6 +55,7 @@ from reso_agent.models.router import model_provider_for, model_route_from_env
 from reso_agent.persona.draft import build_journey_draft
 from reso_agent.runtime.pipeline import AgentRuntime
 from reso_agent.runtime.product_tasks import ProductTaskRuntime
+from reso_agent.runtime.reflection_tasks import ReflectionTaskRuntime
 
 app = FastAPI(title="Reso Agent", version="0.1.0")
 app.add_middleware(
@@ -63,6 +69,7 @@ app.add_middleware(
 _model_provider = model_provider_for(model_route_from_env())
 runtime = AgentRuntime(model_provider=_model_provider)
 product_tasks = ProductTaskRuntime(_model_provider)
+reflection_tasks = ReflectionTaskRuntime(_model_provider)
 lab = LabWorkspace(model_provider=_model_provider)
 _stream_event_adapter: TypeAdapter[AgentStreamEvent] = TypeAdapter(AgentStreamEvent)
 _service_token = os.getenv("AGENT_SERVICE_TOKEN", "").strip()
@@ -89,6 +96,54 @@ async def turn(
 ) -> AgentTurnResponse:
     response, _trace = await runtime.turn(request)
     return response
+
+
+@app.post("/v1/agent/turn/stream")
+async def stream_product_turn(
+    request: AgentTurnRequest, _auth: None = Depends(require_service_auth)
+) -> StreamingResponse:
+    async def events() -> AsyncIterator[str]:
+        progress: asyncio.Queue[AgentStatusEvent] = asyncio.Queue()
+        task = asyncio.create_task(
+            runtime.turn_with_details(request, on_progress=progress.put_nowait)
+        )
+        try:
+            while not task.done():
+                try:
+                    event = await asyncio.wait_for(progress.get(), timeout=0.05)
+                except TimeoutError:
+                    continue
+                yield _stream_data(event)
+            while not progress.empty():
+                yield _stream_data(progress.get_nowait())
+            details = await task
+            payload = AgentTurnResultEvent(response=details.response).model_dump_json(by_alias=True)
+            yield f"data: {payload}\n\n"
+        except ModelProviderError:
+            yield _stream_data(
+                AgentStreamErrorEvent(
+                    code="MODEL_PROVIDER_FAILED",
+                    text="Reso 这次没有连接上模型。你的消息还在，可以重新发送。",
+                    retryable=True,
+                )
+            )
+        except ValueError:
+            yield _stream_data(
+                AgentStreamErrorEvent(
+                    code="AGENT_OUTPUT_INVALID",
+                    text="Reso 没能整理好这次回复，请再试一次。",
+                    retryable=True,
+                )
+            )
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post(
@@ -168,9 +223,24 @@ async def tea_party_evaluate(
     response_model_by_alias=True,
 )
 async def reflect(
-    _request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
+    request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
 ) -> AgentReflectionResponse:
-    return AgentReflectionResponse(memory_candidates=[], persona_patch_candidates=[])
+    try:
+        return await reflection_tasks.reflect(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Reflection generation failed") from error
+
+
+@app.post("/v1/embeddings", response_model=EmbeddingsResponse, response_model_by_alias=True)
+async def embeddings(
+    request: EmbeddingsRequest, _auth: None = Depends(require_service_auth)
+) -> EmbeddingsResponse:
+    try:
+        vectors = await _model_provider.embed(request.inputs)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Embedding generation failed") from error
+    model_name = getattr(_model_provider, "model", None) or "embedding"
+    return EmbeddingsResponse(model=model_name, embeddings=vectors)
 
 
 @app.post("/v1/persona/initialize", response_model=PersonaVersion, response_model_by_alias=True)
@@ -193,14 +263,34 @@ async def initialize_persona(
 
 
 @app.post(
+    "/v1/persona/quick-start",
+    response_model=QuickStartPersonaDraftResponse,
+    response_model_by_alias=True,
+)
+async def initialize_quick_start_persona(
+    request: QuickStartPersonaDraftRequest,
+    _auth: None = Depends(require_service_auth),
+) -> QuickStartPersonaDraftResponse:
+    try:
+        return await product_tasks.initialize_quick_start_persona(request)
+    except ModelProviderError as error:
+        raise HTTPException(
+            status_code=502, detail="Quick Start Persona generation failed"
+        ) from error
+
+
+@app.post(
     "/v1/persona/suggest-patch",
     response_model=AgentReflectionResponse,
     response_model_by_alias=True,
 )
 async def suggest_patch(
-    _request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
+    request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
 ) -> AgentReflectionResponse:
-    return AgentReflectionResponse(memory_candidates=[], persona_patch_candidates=[])
+    try:
+        return await reflection_tasks.reflect(request, focus="patches")
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Persona patch suggestion failed") from error
 
 
 @app.post("/v1/social/act", response_model=SocialMissionResult, response_model_by_alias=True)

@@ -39,6 +39,10 @@ export class SessionService {
       createdAt: this.now().toISOString(),
     });
   }
+
+  async resolve(token: string): Promise<string | null> {
+    return this.repository.resolveSession(hashToken(token));
+  }
 }
 
 export function hashToken(token: string): string {

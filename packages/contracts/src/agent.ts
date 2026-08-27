@@ -29,8 +29,14 @@ export type AgentStatusPhase = z.infer<typeof AgentStatusPhaseSchema>;
 export const AgentStatusEventSchema = z.object({
   type: z.literal("status"),
   phase: AgentStatusPhaseSchema,
+  step: z.number().int().min(1).max(6).optional(),
+  label: z.string().min(1).max(40).optional(),
   text: z.string().min(1).max(80),
 });
+export type AgentStatusEvent = z.infer<typeof AgentStatusEventSchema>;
+
+export const PublicProcessModeSchema = z.enum(["adaptive", "relationship_deep_dive"]);
+export type PublicProcessMode = z.infer<typeof PublicProcessModeSchema>;
 
 export const AgentPublicReflectionEventSchema = z.object({
   type: z.literal("public_reflection"),
@@ -109,6 +115,7 @@ export const AgentTurnRequestSchema = z.object({
   message: z.string().min(1).max(20_000),
   requestedMode: AgentModeSchema.optional(),
   personaVersionId: UuidSchema.nullable(),
+  publicProcessMode: PublicProcessModeSchema.default("adaptive"),
   context: z
     .object({
       persona: z
@@ -154,10 +161,34 @@ export const AgentTurnResponseSchema = z.object({
 });
 export type AgentTurnResponse = z.infer<typeof AgentTurnResponseSchema>;
 
+export const AgentTurnResultEventSchema = z.object({
+  type: z.literal("result"),
+  response: AgentTurnResponseSchema,
+});
+export type AgentTurnResultEvent = z.infer<typeof AgentTurnResultEventSchema>;
+
 export const AgentReflectionRequestSchema = z.object({
   userId: UuidSchema,
   conversationId: UuidSchema,
   messageIds: z.array(UuidSchema).min(1),
+  transcript: z
+    .array(
+      z.object({
+        id: UuidSchema,
+        role: z.enum(["user", "agent"]),
+        content: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(50),
+  persona: z
+    .object({
+      versionId: UuidSchema,
+      version: z.string().min(1),
+      content: PersonaContentSchema,
+    })
+    .nullable(),
+  memories: z.array(MemoryContextSchema),
 });
 export type AgentReflectionRequest = z.infer<typeof AgentReflectionRequestSchema>;
 
@@ -166,6 +197,17 @@ export const AgentReflectionResponseSchema = z.object({
   personaPatchCandidates: z.array(PersonaPatchCandidateSchema),
 });
 export type AgentReflectionResponse = z.infer<typeof AgentReflectionResponseSchema>;
+
+export const EmbeddingsRequestSchema = z.object({
+  inputs: z.array(z.string().min(1).max(20_000)).min(1).max(64),
+});
+export type EmbeddingsRequest = z.infer<typeof EmbeddingsRequestSchema>;
+
+export const EmbeddingsResponseSchema = z.object({
+  model: z.string().min(1),
+  embeddings: z.array(z.array(z.number()).min(1)).min(1),
+});
+export type EmbeddingsResponse = z.infer<typeof EmbeddingsResponseSchema>;
 
 export const SocialActionRequestSchema = SocialMissionSchema;
 export type SocialActionRequest = SocialMission;

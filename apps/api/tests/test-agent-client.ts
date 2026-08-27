@@ -4,6 +4,9 @@ import type {
   AgentReflectionResponse,
   AgentTurnRequest,
   AgentTurnResponse,
+  AgentStatusEvent,
+  EmbeddingsRequest,
+  EmbeddingsResponse,
   AnalyzeIncomingRequest,
   AnalyzeIncomingResponse,
   PersonaInitializeRequest,
@@ -21,6 +24,8 @@ import type {
   PersonalManualVariableId,
   SocialMission,
   SocialMissionResult,
+  QuickStartPersonaDraftRequest,
+  QuickStartPersonaDraftResponse,
 } from "@reso/contracts";
 import { AgentClientError, type IAgentClient } from "../src/agent-client/agent-client.js";
 
@@ -36,6 +41,27 @@ function stableUuid(value: string): string {
 
 /** Hermetic test fixture. Product code always uses ResoAgentClient. */
 export class TestAgentClient implements IAgentClient {
+  async initializeQuickStartPersona(
+    request: QuickStartPersonaDraftRequest,
+  ): Promise<QuickStartPersonaDraftResponse> {
+    this.assertAvailable();
+    return {
+      content: {
+        identity: { mbti: request.answers.mbti, zodiac: request.answers.zodiac },
+        values: ["真诚"],
+        socialStyle: { rhythm: request.answers.socialPreference },
+        communicationStyle: { preference: request.answers.communicationPreference },
+        relationshipNeeds: [request.answers.relationshipGoal],
+        boundaries: ["不在信息不足时替你下结论"],
+        interests: [],
+        currentGoals: [],
+        confirmedPatterns: [],
+        uncertainHypotheses: ["这只是基于 Quick Start 的初步理解，等待你的确认。"],
+      },
+      modelVersion: "test-quick-start-v1",
+    };
+  }
+
   constructor(private readonly failureMode: TestAgentFailureMode = "none") {}
 
   async analyzeIncoming(request: AnalyzeIncomingRequest): Promise<AnalyzeIncomingResponse> {
@@ -159,12 +185,32 @@ export class TestAgentClient implements IAgentClient {
     });
   }
 
-  async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
+  async turn(
+    request: AgentTurnRequest,
+    onProgress?: (event: AgentStatusEvent) => void,
+  ): Promise<AgentTurnResponse> {
     const isCorrection = /不是|不对|并非|not really/i.test(request.message);
     const message = isCorrection
       ? "谢谢你纠正我。我会把这次纠正作为高优先级记忆，而不是直接给你贴标签。"
       : "听起来你今天需要一点轻松的空间。我们可以先不分析，只慢一点聊。";
-    return {
+    if (request.publicProcessMode === "relationship_deep_dive") {
+      const texts = [
+        ["先找一个具体共鸣", "我先看看，哪一点真的让你想靠近。"],
+        ["再看看边界", "我再确认一下，有没有不能勉强的差异。"],
+        ["比较相处的节奏", "接着看看，你们遇到压力时会不会互相挤压。"],
+        ["最后预演一下难处", "最后只试想一个可能卡住的场景。"],
+      ] as const;
+      texts.forEach(([label, text], index) =>
+        onProgress?.({
+          type: "status",
+          phase: "composing",
+          step: index + 1,
+          label,
+          text,
+        }),
+      );
+    }
+    const response: AgentTurnResponse = {
       requestId: request.requestId,
       message,
       mode: isCorrection ? "mirror" : (request.requestedMode ?? "companion"),
@@ -175,10 +221,54 @@ export class TestAgentClient implements IAgentClient {
       publicEvents: [{ type: "message", position: "final", text: message }],
       traceId: randomUUID(),
     };
+    for (const event of response.publicEvents) {
+      if (event.type === "status") onProgress?.(event);
+    }
+    return response;
   }
 
-  async reflect(_request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
-    return { memoryCandidates: [], personaPatchCandidates: [] };
+  async reflect(request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
+    this.assertAvailable();
+    const corrective = request.transcript.filter(
+      (row) =>
+        row.role === "user" &&
+        ["不是", "其实", "别再", "我讨厌", "搞错"].some((marker) => row.content.includes(marker)),
+    );
+    const first = corrective[0];
+    return {
+      memoryCandidates:
+        first === undefined
+          ? []
+          : [
+              {
+                type: "correction",
+                summary: "用户明确纠正了此前的解释，应以本次表达为准。",
+                evidenceMessageIds: [first.id],
+                confidence: 0.9,
+                requiresReview: true,
+              },
+            ],
+      personaPatchCandidates: [],
+    };
+  }
+
+  async embedTexts(request: EmbeddingsRequest): Promise<EmbeddingsResponse> {
+    this.assertAvailable();
+    return {
+      model: "test-embedding-v1",
+      embeddings: request.inputs.map((input) => this.testEmbedding(input)),
+    };
+  }
+
+  private testEmbedding(input: string): number[] {
+    const dimensions = 8;
+    const vector = new Array<number>(dimensions).fill(0);
+    for (let index = 0; index < input.length; index += 1) {
+      const slot = index % dimensions;
+      vector[slot] = (vector[slot] ?? 0) + (input.charCodeAt(index) % 97) / 97;
+    }
+    const norm = Math.hypot(...vector) || 1;
+    return vector.map((value) => Number((value / norm).toFixed(6)));
   }
 
   async initializePersona(request: PersonaInitializeRequest): Promise<PersonaVersion> {

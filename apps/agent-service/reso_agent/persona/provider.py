@@ -23,24 +23,52 @@ class PersonaProvider:
         "confirmed_patterns": ("总是", "每次", "模式", "为什么"),
         "uncertain_hypotheses": ("分析", "猜", "模式", "是不是"),
     }
+    _PERSONA_AWARENESS_MARKERS: ClassVar[tuple[str, ...]] = (
+        "了解我",
+        "对我了解",
+        "了解多少",
+        "知道我",
+        "记得我",
+        "怎么看我",
+        "对我的理解",
+        "know about me",
+    )
 
     def select(self, persona: PersonaContext | None, message: str) -> SelectedPersonaContext:
         if persona is None:
             return SelectedPersonaContext(version="unbound", fields={})
 
-        content = persona.content.model_dump()
-        selected_names = [
-            name
-            for name, markers in self._KEYWORDS.items()
-            if any(marker in message.lower() for marker in markers)
-        ]
+        # PersonaContent serializes to the cross-service camelCase contract by
+        # default. Selection policy uses the Python field names, so keep this
+        # internal representation in snake_case.
+        content = persona.content.model_dump(by_alias=False)
+        normalized_message = message.lower()
+        persona_awareness = any(
+            marker in normalized_message for marker in self._PERSONA_AWARENESS_MARKERS
+        )
+        selected_names = (
+            [
+                "values",
+                "communication_style",
+                "social_style",
+                "relationship_needs",
+                "boundaries",
+            ]
+            if persona_awareness
+            else [
+                name
+                for name, markers in self._KEYWORDS.items()
+                if any(marker in normalized_message for marker in markers)
+            ]
+        )
         if not selected_names:
             selected_names = ["values", "communication_style"]
         elif "values" not in selected_names:
             selected_names.insert(0, "values")
 
         selected: dict[str, Any] = {}
-        for name in selected_names[:4]:
+        field_budget = 5 if persona_awareness else 4
+        for name in selected_names[:field_budget]:
             value = content.get(name)
             if value:
                 selected[name] = value

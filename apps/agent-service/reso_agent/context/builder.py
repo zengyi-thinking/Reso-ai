@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from reso_agent.contracts import (
@@ -45,10 +46,21 @@ class ContextBuilder:
         self._knowledge_provider = knowledge_provider or NullRelationshipKnowledgeProvider()
         self._presence_builder = presence_builder or PresenceBuilder()
 
-    def build(self, *, message: str, authorized: AgentAuthorizedContext) -> BuiltContext:
+    def build(
+        self,
+        *,
+        message: str,
+        authorized: AgentAuthorizedContext,
+        query_embedding: Sequence[float] | None = None,
+    ) -> BuiltContext:
         persona = self._persona_provider.select(authorized.persona, message)
         memories = tuple(
-            self._memory_retriever.retrieve(query=message, memories=authorized.memories, top_k=5)
+            self._memory_retriever.retrieve(
+                query=message,
+                memories=authorized.memories,
+                top_k=5,
+                query_embedding=query_embedding,
+            )
         )
         recent = tuple(authorized.recent_messages[-8:])
         knowledge = self._knowledge_provider.relevant_context(message)

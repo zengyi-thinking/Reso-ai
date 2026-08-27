@@ -5,7 +5,10 @@ from uuid import uuid4
 import pytest
 
 from reso_agent.contracts import (
+    AgentAuthorizedContext,
     AgentMessageEvent,
+    AgentStatusEvent,
+    AgentTurnRequest,
     AnalyzeIncomingRequest,
     JourneyEvidenceItem,
     JourneyEvidenceSignal,
@@ -13,12 +16,14 @@ from reso_agent.contracts import (
     LabTurnRequest,
     PersonalManualGenerationRequest,
     PolishDraftRequest,
+    PublicProcessMode,
     SocialActRequestV1,
     SocialEvaluateRequestV1,
     TeaPartyAgentMessage,
 )
 from reso_agent.lab import LabWorkspace
 from reso_agent.models.provider import create_real_provider_from_env
+from reso_agent.runtime.pipeline import AgentRuntime
 from reso_agent.runtime.product_tasks import ProductTaskRuntime
 
 
@@ -54,6 +59,41 @@ async def test_real_minimax_supports_three_breathing_turns() -> None:
     ).lower()
     assert "<think>" not in serialized
     assert "reasoning_details" not in serialized
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_REAL_MINIMAX") != "1",
+    reason="paid real-provider smoke is manual opt-in only",
+)
+@pytest.mark.asyncio
+async def test_real_minimax_streams_optional_deep_relationship_process() -> None:
+    progress: list[AgentStatusEvent] = []
+    request = AgentTurnRequest(
+        request_id=uuid4(),
+        user_id=uuid4(),
+        agent_id=uuid4(),
+        conversation_id=uuid4(),
+        message="我认识了一个新朋友，但还不知道我们适不适合继续靠近。",
+        persona_version_id=None,
+        public_process_mode=PublicProcessMode.RELATIONSHIP_DEEP_DIVE,
+        context=AgentAuthorizedContext(),
+    )
+
+    details = await AgentRuntime().turn_with_details(request, on_progress=progress.append)
+
+    composing = [event for event in progress if event.phase.value == "composing"]
+    assert [event.step for event in composing] == [1, 2, 3, 4]
+    assert [event.label for event in composing] == [
+        "先找一个具体共鸣",
+        "再看看边界",
+        "比较相处的节奏",
+        "最后预演一下难处",
+    ]
+    assert all(event.text.strip() for event in composing)
+    assert details.model.provider == "minimax"
+    public_text = " ".join([*(event.text for event in composing), details.response.message]).lower()
+    assert "<think>" not in public_text
+    assert "reasoning_details" not in public_text
 
 
 @pytest.mark.skipif(

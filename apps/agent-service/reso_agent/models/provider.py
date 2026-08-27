@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import os
+import random
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -21,6 +24,50 @@ class ModelProviderError(RuntimeError):
 # Receives public text deltas as they stream in. Providers must never forward
 # provider-side reasoning/thinking deltas through this callback.
 OnTextDelta = Callable[[str], None]
+
+# Fixed storage dimension; the `memories.embedding` pgvector column uses it too.
+EMBEDDING_DIMENSION = 1536
+
+
+def fit_embedding(raw: Sequence[float]) -> list[float]:
+    """Project a raw provider vector onto the fixed storage dimension and
+    re-normalize it so cosine similarity stays scale-free."""
+    values = [float(value) for value in list(raw)[:EMBEDDING_DIMENSION]]
+    values.extend(0.0 for _ in range(EMBEDDING_DIMENSION - len(values)))
+    norm = math.sqrt(sum(value * value for value in values))
+    if norm <= 0.0:
+        return values
+    return [round(value / norm, 6) for value in values]
+
+
+def _lexical_terms(text: str) -> tuple[str, ...]:
+    normalized = re.sub(r"\s+", "", text.lower())
+    terms = sorted(set(re.findall(r"[a-z0-9]{2,}", normalized)))
+    cjk = "".join(re.findall(r"[\u3400-\u9fff]", normalized))
+    terms.extend(sorted({cjk[index : index + 2] for index in range(max(0, len(cjk) - 1))}))
+    return tuple(terms)
+
+
+def _stable_unit_vector(term: str) -> tuple[float, ...]:
+    seed = int.from_bytes(hashlib.sha256(term.encode("utf-8")).digest()[:8], "big")
+    generator = random.Random(seed)
+    gauss_values = [generator.gauss(0.0, 1.0) for _ in range(EMBEDDING_DIMENSION)]
+    norm = math.sqrt(sum(value * value for value in gauss_values)) or 1.0
+    return tuple(value / norm for value in gauss_values)
+
+
+def deterministic_embedding(text: str) -> list[float]:
+    """Bag-of-terms random projection: shared substrings score high cosine,
+    disjoint texts stay near orthogonal. Deterministic across runs."""
+    terms = _lexical_terms(text)
+    if not terms:
+        return [0.0] * EMBEDDING_DIMENSION
+    accumulated = [0.0] * EMBEDDING_DIMENSION
+    for term in terms:
+        vector = _stable_unit_vector(term)
+        for index, value in enumerate(vector):
+            accumulated[index] += value
+    return fit_embedding(accumulated)
 
 
 @dataclass(frozen=True)
@@ -41,6 +88,51 @@ class ModelRequest:
 
 _RELATIONSHIP_HINTS = ("她", "他", "朋友", "关系", "聊天", "回复", "冷淡", "疏远")
 
+# Reflection cues used only by the deterministic route to keep tests hermetic.
+_CORRECTION_MARKERS = ("不是", "其实", "别再", "我讨厌", "搞错", "不对")
+
+
+def deterministic_reflection_plan(payload: dict) -> dict:
+    """Canned batch-reflection output: one correction candidate per corrective
+    user message plus an optional persona patch when a persona version exists.
+    Weak transcripts intentionally produce no candidates at all."""
+    transcript = payload.get("transcript") or []
+    persona = payload.get("persona")
+    focus = payload.get("focus") or "all"
+    memory_candidates: list[dict] = []
+    patch_candidates: list[dict] = []
+    if focus != "patches":
+        for row in transcript:
+            role = row.get("role")
+            content = str(row.get("content", ""))
+            message_id = row.get("id")
+            if role != "user" or not message_id:
+                continue
+            if not any(marker in content for marker in _CORRECTION_MARKERS):
+                continue
+            memory_candidates.append(
+                {
+                    "type": "correction",
+                    "summary": "用户明确纠正了此前的解释，应以本次表达为准。",
+                    "evidenceMessageIds": [message_id],
+                    "confidence": 0.9,
+                }
+            )
+            break
+    if persona and memory_candidates and focus != "memories":
+        evidence_id = memory_candidates[0]["evidenceMessageIds"][0]
+        patch_candidates.append(
+            {
+                "path": "/confirmedPatterns/socialRhythm",
+                "oldValue": None,
+                "proposedValue": "对低价值社交主动性低",
+                "reason": "用户在对话中明确纠正了旧标签。",
+                "evidenceIds": [evidence_id],
+                "confidence": 0.86,
+            }
+        )
+    return {"memoryCandidates": memory_candidates, "personaPatchCandidates": patch_candidates}
+
 
 @dataclass(frozen=True)
 class ModelResponse:
@@ -54,6 +146,15 @@ class ModelProvider(Protocol):
     async def generate(
         self, request: ModelRequest, on_text: OnTextDelta | None = None
     ) -> ModelResponse: ...
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Batch semantic embeddings for retrieval augmentation.
+
+        An unconfigured embedding model must raise ModelProviderError instead of
+        guessing vectors; callers decide whether to fall back to the lexical
+        baseline (that fallback is a quality degradation, never fake output).
+        """
+        ...
 
 
 def _first_env(*names: str) -> str:
@@ -192,6 +293,29 @@ class DeterministicModelProvider:
                 },
                 ensure_ascii=False,
             )
+        elif request.generation_phase == "persona_quick_start":
+            payload = json.loads(request.user_message)
+            content = json.dumps(
+                {
+                    "identity": {"mbti": payload.get("mbti"), "zodiac": payload.get("zodiac")},
+                    "values": ["真诚"],
+                    "socialStyle": {"rhythm": payload["socialPreference"]},
+                    "communicationStyle": {"preference": payload["communicationPreference"]},
+                    "relationshipNeeds": [payload["relationshipGoal"]],
+                    "boundaries": ["不在信息不足时替你下结论"],
+                    "interests": [],
+                    "currentGoals": [],
+                    "confirmedPatterns": [],
+                    "uncertainHypotheses": ["这只是基于 Quick Start 的初步理解，等待你的确认。"],
+                },
+                ensure_ascii=False,
+            )
+        elif request.generation_phase == "reflect":
+            payload = json.loads(request.user_message)
+            content = json.dumps(
+                deterministic_reflection_plan(payload),
+                ensure_ascii=False,
+            )
         relationship = any(hint in request.user_message for hint in _RELATIONSHIP_HINTS)
         if request.generation_phase in {
             "assist_analyze",
@@ -199,6 +323,8 @@ class DeterministicModelProvider:
             "tea_party_act",
             "tea_party_evaluate",
             "personal_manual_generate",
+            "persona_quick_start",
+            "reflect",
         }:
             pass
         elif request.generation_phase == "draft":
@@ -250,6 +376,9 @@ class DeterministicModelProvider:
             ),
         )
 
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        return [deterministic_embedding(text) for text in texts]
+
 
 @dataclass(frozen=True)
 class ProviderConfig:
@@ -258,6 +387,10 @@ class ProviderConfig:
     api_key: str
     base_url: str
     timeout_seconds: float = 45.0
+    # Optional: leaving this empty keeps every caller on the lexical baseline.
+    # When set, memory-write and query paths hard-fail on embedding errors
+    # instead of silently storing or comparing garbage vectors.
+    embedding_model: str = ""
 
     @classmethod
     def from_env(cls) -> ProviderConfig:
@@ -283,7 +416,14 @@ class ProviderConfig:
         missing = [name for name, value in (("model", model), ("api key", api_key)) if not value]
         if missing:
             raise ModelProviderError(f"MiniMax configuration is missing: {', '.join(missing)}")
-        return cls(provider="minimax", model=model, api_key=api_key, base_url=base_url.rstrip("/"))
+        embedding_model = _first_env("LLM_EMBEDDING_MODEL", "MINIMAX_EMBEDDING_MODEL").strip()
+        return cls(
+            provider="minimax",
+            model=model,
+            api_key=api_key,
+            base_url=base_url.rstrip("/"),
+            embedding_model=embedding_model,
+        )
 
 
 class MiniMaxModelProvider:
@@ -291,6 +431,10 @@ class MiniMaxModelProvider:
 
     def __init__(self, config: ProviderConfig) -> None:
         self._config = config
+
+    @property
+    def model(self) -> str:
+        return self._config.model
 
     async def generate(
         self, request: ModelRequest, on_text: OnTextDelta | None = None
@@ -330,6 +474,35 @@ class MiniMaxModelProvider:
         if role == "agent":
             return "assistant"
         raise ModelProviderError(f"Unsupported conversation role: {role}")
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        if not self._config.embedding_model:
+            raise ModelProviderError(
+                "LLM_EMBEDDING_MODEL is not configured; semantic embeddings are unavailable"
+            )
+        try:
+            async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+                response = await client.post(
+                    f"{self._config.base_url}/embeddings",
+                    headers={"Authorization": f"Bearer {self._config.api_key}"},
+                    json={"model": self._config.embedding_model, "input": list(texts)},
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
+            raise ModelProviderError(f"MiniMax embedding failed: {type(error).__name__}") from error
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list) or len(rows) != len(texts):
+            raise ModelProviderError("MiniMax embedding response is malformed")
+        ordered = sorted(rows, key=lambda row: int(row.get("index", 0)))
+        try:
+            return [fit_embedding(row["embedding"]) for row in ordered]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ModelProviderError(
+                f"MiniMax embedding response is malformed: {type(error).__name__}"
+            ) from error
 
     async def _openai(self, request: ModelRequest) -> tuple[str, int | None, int | None]:
         url = f"{self._config.base_url}/chat/completions"

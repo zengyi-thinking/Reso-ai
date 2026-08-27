@@ -27,6 +27,10 @@ uv run --project apps/agent-service uvicorn reso_agent.app:app --reload --port 8
 
 根 `pnpm dev` 会先 build shared packages，再并行启动 Web/API/Worker/Agent Lab。API 始终调用本地 FastAPI（Reso Agent），需要在 `.env` 配置可用的 MiniMax `LLM_API_KEY`；Python 测试通过 `RESO_MODEL_ROUTE=deterministic` 保持无密钥运行。
 
+邮箱验证码联调还需要在本地 `.env` 配置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_AUTH_CODE`、`SMTP_FROM` 与独立的 `AUTH_CODE_HASH_SECRET`。QQ 邮箱通常使用 `smtp.qq.com:465`；`SMTP_AUTH_CODE` 是授权码而不是登录密码。任何命令、日志或截图都不得打印这些值。
+
+成长闭环相关环境变量：`LLM_EMBEDDING_MODEL` 可选，未设置时全链路保持纯 lexical 检索基线；设置后 docker compose 的 agent-service 与 API 调用路径启用 MiniMax embeddings（统一写入固定 1536 维向量）。Worker 另支持 `WORKER_REFLECTION_THRESHOLD`（默认 `4`）：同一会话水位之后累计的用户消息达到阈值才触发一次 Reflection。
+
 ## 数据库与事件接缝验证
 
 ```bash

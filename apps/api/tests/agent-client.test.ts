@@ -72,6 +72,32 @@ afterEach(() => {
 });
 
 describe("ResoAgentClient", () => {
+  it("streams designed public progress before returning the validated turn result", async () => {
+    const body = [
+      {
+        type: "status",
+        phase: "noticing",
+        step: 1,
+        label: "先找一个具体共鸣",
+        text: "我先看看，哪一点真的让你想靠近。",
+      },
+      { type: "result", response: validResponse },
+    ]
+      .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+      .join("");
+    const client = new ResoAgentClient({
+      baseUrl: "http://agent.test",
+      fetchImplementation: async () =>
+        new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    });
+    const progress: string[] = [];
+
+    await expect(
+      client.turn(createAgentTurnRequest(), (event) => progress.push(event.text)),
+    ).resolves.toEqual(validResponse);
+    expect(progress).toEqual(["我先看看，哪一点真的让你想靠近。"]);
+  });
+
   it("validates a successful provider response against the shared Contract", async () => {
     vi.stubGlobal(
       "fetch",

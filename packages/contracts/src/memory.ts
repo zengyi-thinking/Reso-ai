@@ -25,6 +25,7 @@ export const MemoryContextSchema = MemorySchema.extend({
   importance: ConfidenceSchema.default(0.5),
   relationshipRelevance: ConfidenceSchema.default(0),
   topics: z.array(z.string()).default([]),
+  embedding: z.array(z.number()).optional(),
   enabled: z.boolean().default(true),
   conflictsWith: z.array(UuidSchema).default([]),
 });

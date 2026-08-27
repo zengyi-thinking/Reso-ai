@@ -18,10 +18,10 @@ export function WelcomePage(): React.JSX.Element {
           需要慢慢抵达。
         </h1>
         <p className="welcome__lead">
-          Reso.AI 会从一次约八轮的小旅程开始，陪你写下第一版属于自己的 Personal Manual。
+          从几个轻一点的问题开始，写下第一版属于你的 Personal Manual，再遇见只属于你的 Reso Agent。
         </p>
-        <Link className="primary-action" to="/journey">
-          开始这段旅程
+        <Link className="primary-action" to="/quick-start">
+          开始认识自己
         </Link>
         <p className="privacy-note">你的回答不会自动变成标签；每一次理解都可以被你修正。</p>
       </div>

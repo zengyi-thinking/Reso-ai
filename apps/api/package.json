@@ -24,6 +24,18 @@
     "./journeys/personal-manual-generation-service": {
       "types": "./dist/src/journeys/personal-manual-generation-service.d.ts",
       "import": "./dist/src/journeys/personal-manual-generation-service.js"
+    },
+    "./vertical-slice/in-memory-repository": {
+      "types": "./dist/src/vertical-slice/in-memory-repository.d.ts",
+      "import": "./dist/src/vertical-slice/in-memory-repository.js"
+    },
+    "./vertical-slice/postgres-repository": {
+      "types": "./dist/src/vertical-slice/postgres-repository.d.ts",
+      "import": "./dist/src/vertical-slice/postgres-repository.js"
+    },
+    "./vertical-slice/reflection-service": {
+      "types": "./dist/src/vertical-slice/reflection-service.d.ts",
+      "import": "./dist/src/vertical-slice/reflection-service.js"
     }
   },
   "scripts": {
@@ -40,12 +52,14 @@
     "@reso/config": "workspace:*",
     "@reso/contracts": "workspace:*",
     "fastify": "^5.12.1",
+    "nodemailer": "^9.0.5",
     "pg": "^8.16.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@reso/test-fixtures": "workspace:*",
     "@types/node": "^26.3.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.15.5",
     "tsx": "^4.23.12",
     "vitest": "^4.1.11"

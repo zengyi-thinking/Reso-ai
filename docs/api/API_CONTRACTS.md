@@ -1,5 +1,9 @@
 # API Contracts
 
+## Product Vertical Slice v0.1
+
+公开产品入口为 `/api/onboarding/*`、`/api/auth/*`、`/api/agents/claim` 与 `/api/conversations/*`。Web 只提交 Quick Start、用户修正、邮箱验证码和聊天文本；`userId`、`agentId`、Persona、Memory 与 recent messages 均由 Product API 从服务端 Session 和数据库装配。SSE 内容事件使用共享 `AgentPublicEvent`，终止控制事件使用 `done/error`。
+
 `packages/contracts` 是 TypeScript/HTTP/Event 的真源，使用 Zod 同时完成运行时校验和类型推导。Python Pydantic models 必须与其保持 parity；当前 AgentTurn 已由同一组 valid/invalid golden fixture 跨 Zod 与 Pydantic 验证，更广泛的 OpenAPI/JSON Schema 生成留给 Stage 1。
 
 ## Error envelope
@@ -14,7 +18,8 @@
 | POST   | `/v1/agent/turn`               | `AgentTurnRequest → AgentTurnResponse`                      |
 | POST   | `/v1/agent/reflect`            | `AgentReflectionRequest → AgentReflectionResponse`          |
 | POST   | `/v1/persona/initialize`       | `PersonaInitializeRequest → PersonaVersion Draft`           |
-| POST   | `/v1/persona/suggest-patch`    | reflection input → candidates                               |
+| POST   | `/v1/persona/suggest-patch`    | `AgentReflectionRequest` focus="patches" → candidates       |
+| POST   | `/v1/embeddings`               | internal texts → { model, embeddings }                      |
 | POST   | `/v1/social/act`               | `SocialMission → SocialMissionResult`                       |
 | POST   | `/v1/social/evaluate`          | mission result → evaluated result                           |
 | POST   | `/v1/personal-manual/generate` | `PersonalManualGenerationRequest → PersonalManualCandidate` |
@@ -44,7 +49,11 @@
 | POST   | `/api/connections/{id}/tea-party/retry` | 仅重试允许的 failed Mission        |
 | GET    | `/api/notifications`                    | 轮询参与者可见的 ready/failed 事件 |
 | GET    | `/api/notifications/stream`             | SSE 推送状态与 ID，不推送正文      |
-| DELETE | `/api/session`                          | 撤销当前不透明 Session Token       |
+
+产品聊天通过 `POST /api/conversations/{conversationId}/turns/stream` 接收公开事件。请求可选 `publicProcessMode`：`adaptive`（默认）或 `relationship_deep_dive`。深度关系模式只改变用户可见的受控检查流程，不开放模型隐藏推理。
+
+Agent Service 的 `POST /v1/agent/turn/stream` 仅供 Product API 的 `IAgentClient` 使用；浏览器不得直接调用。它先发送公开 `status`，最后发送内部控制事件 `result`，由 Product API 校验、持久化并转换为产品 SSE。
+| DELETE | `/api/session` | 撤销当前不透明 Session Token |
 
 对应共享 Schema 位于 `assist.ts`、`tea-party.ts` 和 `errors.ts`。所有业务 API 必须从服务端 Session 解析用户；不得接受 body/query 中的可信 `userId`。
 
@@ -81,3 +90,36 @@ Claim Agent 成功时，Persona V1、Agent 关联、`persona.created` Outbox 与
 `replayOfJourneyId` 只是客户端可提供的关联提示，不是 `official` 的决定来源。Backend 会按
 owner + `journeyVersion` 自动查找首个正式 Attempt；即使客户端遗漏 replay 字段，后续 Attempt 也会被
 标记为 replay。数据库部分唯一索引保证并发创建时仍只有一份 `official=true`。
+
+## 成长闭环候选审阅与内部接口（2026-08-27）
+
+`/v1/agent/reflect` 与 `/v1/persona/suggest-patch` 已是真实 Reflection 实现。`AgentReflectionRequest`
+扩展为：必填 `transcript`（1..50 条 `{ id, role: "user" | "agent", content }`）、可选可空 `persona`
+（`versionId/version/content`）与可选 `memories`。引擎保证：
+
+- evidence 引用的 message id 必须存在于 transcript，否则该候选整体丢弃；
+- 未知 memory type 直接丢弃，不做类型改写；单批最多 3 条 memory candidates 与 1 条 patch candidate；
+- patch candidate 必须携带 persona version 作为 `from_version_id`，否则跳过；
+- `/v1/persona/suggest-patch` 以 `focus="patches"` 复用同一 runtime，只返回 patch 候选；
+- 候选一律以 status=`pending`、requiresReview=true 持久化（由 Product API Worker 写入）。
+
+Agent Service 新增内部端点 `POST /v1/embeddings`：请求 `{ inputs: string[] }`（最多 64 条），响应
+`{ model, embeddings }`。MiniMax provider 走 OpenAI-style `/embeddings`，向量统一截断/重归一化到固定
+1536 维以匹配 migration 0002 的 `memories.embedding` pgvector 列；provider 失败 fail-fast 映射 502。
+该端点仅供 agent-service 内部使用，浏览器不得访问。
+
+新增候选审阅路由均要求登录并按 user scope 过滤：
+
+| Method | Path                                   | Contract                                |
+| ------ | -------------------------------------- | --------------------------------------- |
+| GET    | `/api/memory-candidates`               | list pending memory candidates          |
+| POST   | `/api/memory-candidates/{id}/decision` | accept promotes candidate into memories |
+| GET    | `/api/persona-patches`                 | list pending persona patch candidates   |
+| POST   | `/api/persona-patches/{id}/decision`   | accept marks patch accepted             |
+
+Decision body 为 `{ decision: "accept" | "reject" }`。memory candidate 的 accept 在同一事务中把候选
+晋升为正式 Memory（importance=confidence、enabled=true）；patch 的 accept 只写 accepted 与
+confirmed_at，Persona Version bump 属于后续流程。错误复用共享 errors enum：不存在返回
+`CANDIDATE_NOT_FOUND`（404），重复裁决返回 `CANDIDATE_ALREADY_DECIDED`（409）。
+
+聊天产品 SSE 与公开事件契约不变：反思在 Worker 后台路径发生，不影响 `/turns/stream` 的同步回合。

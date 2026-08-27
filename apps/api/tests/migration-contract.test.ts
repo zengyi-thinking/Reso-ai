@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +11,25 @@ const initialMigrationPath = fileURLToPath(
 const journeyMigrationPath = fileURLToPath(
   new URL("../../../database/migrations/0005_journey_personal_manual.sql", import.meta.url),
 );
+const verticalSliceMigrationPath = fileURLToPath(
+  new URL("../../../database/migrations/0006_product_vertical_slice.sql", import.meta.url),
+);
+const publicEventsRepairMigrationPath = fileURLToPath(
+  new URL("../../../database/migrations/0007_normalize_message_public_events.sql", import.meta.url),
+);
+const migrationDirectoryPath = fileURLToPath(
+  new URL("../../../database/migrations/", import.meta.url),
+);
+
+describe("migration ordering", () => {
+  it("uses each numeric migration prefix exactly once", async () => {
+    const migrations = (await readdir(migrationDirectoryPath)).filter((name) =>
+      name.endsWith(".sql"),
+    );
+    const prefixes = migrations.map((name) => name.split("_", 1)[0]);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
+  });
+});
 
 describe("post-connection migration contract", () => {
   it("contains database-enforced idempotency for missions, turns, and assists", async () => {
@@ -66,5 +85,29 @@ describe("Journey and Personal Manual migration contract", () => {
     expect(sql).toContain("journeys_anonymous_official_version_idx");
     expect(sql).toContain("Rollback strategy: use a compensating migration");
     expect(sql).not.toContain("DROP TABLE");
+  });
+});
+
+describe("Product Vertical Slice migration contract", () => {
+  it("stores only hashed OTP/guest credentials and preserves correction and chat evidence", async () => {
+    const sql = await readFile(verticalSliceMigrationPath, "utf8");
+    for (const required of [
+      "code_hash",
+      "token_hash",
+      "onboarding_corrections",
+      "public_events",
+      "client_message_id",
+      "memory_candidates",
+    ])
+      expect(sql).toContain(required);
+    expect(sql).not.toContain("smtp_auth_code");
+    expect(sql).not.toContain("DROP TABLE");
+  });
+
+  it("normalizes every persisted public event sequence to a JSON array", async () => {
+    const sql = await readFile(publicEventsRepairMigrationPath, "utf8");
+    expect(sql).toContain("jsonb_build_array(public_events)");
+    expect(sql).toContain("messages_public_events_array");
+    expect(sql).toContain("jsonb_typeof(public_events) = 'array'");
   });
 });

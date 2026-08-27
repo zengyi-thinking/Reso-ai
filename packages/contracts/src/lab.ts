@@ -62,6 +62,7 @@ export const LabTurnSchema = z.object({
     )
     .default([]),
   thinkingSteps: z.array(z.string()).default([]),
+  toolNames: z.array(z.string().min(1)).default([]),
   personaPatchCandidates: z.array(PersonaPatchCandidateSchema),
   relationshipCandidates: z.array(
     z.object({ summary: z.string(), reason: z.string(), confidence: z.number() }),

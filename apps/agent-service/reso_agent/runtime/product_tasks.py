@@ -12,12 +12,15 @@ from reso_agent.contracts import (
     AnalyzeIncomingRequest,
     AnalyzeIncomingResponse,
     DisclosureDecisionV1,
+    PersonaContent,
     PersonalManualCandidate,
     PersonalManualContent,
     PersonalManualGenerationRequest,
     PolishCandidate,
     PolishDraftRequest,
     PolishDraftResponse,
+    QuickStartPersonaDraftRequest,
+    QuickStartPersonaDraftResponse,
     ReplyRoute,
     SocialActRequestV1,
     SocialActResponseV1,
@@ -55,6 +58,24 @@ class ProductTaskRuntime:
 
     def __init__(self, provider: ModelProvider) -> None:
         self._provider = provider
+
+    async def initialize_quick_start_persona(
+        self, request: QuickStartPersonaDraftRequest
+    ) -> QuickStartPersonaDraftResponse:
+        raw = await self._generate(
+            prompt="persona_quick_start/v1.md",
+            phase="persona_quick_start",
+            mode=AgentMode.MIRROR,
+            payload=request.answers.model_dump(by_alias=True, mode="json"),
+            max_output_tokens=1_400,
+        )
+        try:
+            content = PersonaContent.model_validate(self._json_object(raw))
+        except (ValidationError, ValueError) as error:
+            raise ModelProviderError("MiniMax returned an invalid Quick Start Persona") from error
+        return QuickStartPersonaDraftResponse(
+            content=content, model_version="persona-quick-start-v1"
+        )
 
     async def analyze_incoming(self, request: AnalyzeIncomingRequest) -> AnalyzeIncomingResponse:
         raw = await self._generate(

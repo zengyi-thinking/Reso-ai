@@ -11,3 +11,4 @@
 | [0005](ADR-0005-postgresql-pgvector.md)           | PostgreSQL + pgvector         | Accepted   |
 | [0006](ADR-0006-mock-agent-provider.md)           | Mock Agent Provider           | Superseded |
 | [0007](ADR-0007-journey-manual-claim-boundary.md) | Journey/Manual/Claim boundary | Accepted   |
+| [0008](ADR-0008-agent-growth-loop.md)             | Agent growth loop             | Accepted   |

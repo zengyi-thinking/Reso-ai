@@ -13,3 +13,4 @@ export * from "./recommendation.js";
 export * from "./relationship.js";
 export * from "./social.js";
 export * from "./tea-party.js";
+export * from "./vertical-slice.js";

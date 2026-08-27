@@ -161,6 +161,7 @@ class LabWorkspace:
             memory_candidate_ids=memory_ids,
             memory_writes=memory_writes,
             thinking_steps=list(details.thinking_steps),
+            tool_names=list(details.trace.tool_names),
             persona_patch_candidates=details.response.persona_patch_candidates,
             relationship_candidates=details.response.relationship_candidates,
             cadence=details.response.cadence,

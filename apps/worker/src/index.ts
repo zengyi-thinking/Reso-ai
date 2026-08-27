@@ -6,14 +6,17 @@ import {
 } from "@reso/api/product/postgres-repository";
 import { TeaPartyService } from "@reso/api/product/tea-party-service";
 import { PostgresJourneyRepository } from "@reso/api/journeys/postgres-journey-repository";
+import { PostgresVerticalSliceRepository } from "@reso/api/vertical-slice/postgres-repository";
+import { ReflectionOrchestrationService } from "@reso/api/vertical-slice/reflection-service";
 import { PersonalManualGenerationService } from "@reso/api/journeys/personal-manual-generation-service";
 import { RuntimeConfigSchema } from "@reso/config";
 import { EventEnvelopeSchema } from "@reso/contracts";
 import { handleSocialMission } from "./social_jobs/handler.js";
 import { handleJourneyCompleted } from "./persona_jobs/handler.js";
+import { scheduleReflection } from "./reflection_jobs/handler.js";
 import { shouldDeadLetterImmediately, workerFailureCode } from "./events/processor.js";
 
-export const workerQueues = ["social_jobs", "persona_jobs"] as const;
+export const workerQueues = ["social_jobs", "persona_jobs", "reflection_jobs"] as const;
 
 const config = RuntimeConfigSchema.parse(process.env);
 if (config.PRODUCT_REPOSITORY !== "postgres") {
@@ -29,6 +32,8 @@ const agentClient = createAgentClient(config.AGENT_SERVICE_URL, {
 const teaPartyService = new TeaPartyService(repository, agentClient);
 const journeyRepository = new PostgresJourneyRepository(pool);
 const personalManualService = new PersonalManualGenerationService(journeyRepository, agentClient);
+const verticalSliceRepository = new PostgresVerticalSliceRepository(pool);
+const growthService = new ReflectionOrchestrationService(verticalSliceRepository, agentClient);
 const workerId = `social-worker:${randomUUID()}`;
 const supportedEvents = [
   "connection.established",
@@ -37,6 +42,7 @@ const supportedEvents = [
   "consent.revoked",
   "connection.blocked",
   "journey.completed",
+  "message.created",
 ];
 let stopping = false;
 const stop = (): void => {
@@ -77,6 +83,7 @@ while (!stopping) {
     }
     try {
       const handled =
+        (await scheduleReflection(envelope.data, growthService)) ||
         (await handleJourneyCompleted(envelope.data, personalManualService)) ||
         (await handleSocialMission(envelope.data, teaPartyService));
       if (!handled) throw new Error("UNSUPPORTED_EVENT");

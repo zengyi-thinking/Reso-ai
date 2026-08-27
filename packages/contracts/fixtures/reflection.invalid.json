@@ -1,0 +1,19 @@
+{
+  "request": {
+    "userId": "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12",
+    "conversationId": "0198d4f3-5cf6-7f2e-aef8-dbc910a31147",
+    "messageIds": ["0198e7a1-1111-7c52-95cc-7ff4f6f93a01"]
+  },
+  "response": {
+    "memoryCandidates": [
+      {
+        "type": "correction",
+        "summary": "",
+        "evidenceMessageIds": [],
+        "confidence": 1.5,
+        "requiresReview": true
+      }
+    ],
+    "personaPatchCandidates": []
+  }
+}

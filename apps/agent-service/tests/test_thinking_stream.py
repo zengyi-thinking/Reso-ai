@@ -9,6 +9,7 @@ from reso_agent.contracts import (
     AgentTurnRequest,
     ConversationCadence,
     ModelMetadata,
+    PublicProcessMode,
 )
 from reso_agent.models.provider import ModelRequest, ModelResponse
 from reso_agent.runtime.pipeline import AgentRuntime
@@ -122,3 +123,30 @@ async def test_relay_goes_quiet_once_payload_starts() -> None:
     )
     assert [event.text for event in live if event.phase.value == "composing"] == ["先听你说"]
     assert details.response.message == "好。"
+
+
+@pytest.mark.asyncio
+async def test_deep_process_fills_four_grounded_steps() -> None:
+    payload = json.dumps(
+        {"events": [{"type": "message", "position": "final", "text": "我们先认识一点点。"}]},
+        ensure_ascii=False,
+    )
+    content = "> 注意到你问得很认真\n> 我把这轮记下来了\n" + payload
+    live: list[AgentStatusEvent] = []
+    request = _request().model_copy(
+        update={"public_process_mode": PublicProcessMode.RELATIONSHIP_DEEP_DIVE}
+    )
+
+    await AgentRuntime(model_provider=_ThinkingProvider(content)).turn_with_details(
+        request, on_progress=live.append
+    )
+
+    composing = [event for event in live if event.phase.value == "composing"]
+    assert [event.step for event in composing] == [1, 2, 3, 4]
+    assert [event.label for event in composing] == [
+        "先找一个具体共鸣",
+        "再看看边界",
+        "比较相处的节奏",
+        "最后预演一下难处",
+    ]
+    assert "暂时不做冲突预演" in composing[-1].text

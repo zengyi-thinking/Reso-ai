@@ -50,7 +50,14 @@ class AgentStatusPhase(StrEnum):
 class AgentStatusEvent(ContractModel):
     type: Literal["status"] = "status"
     phase: AgentStatusPhase
+    step: int | None = Field(default=None, ge=1, le=6)
+    label: str | None = Field(default=None, min_length=1, max_length=40)
     text: str = Field(min_length=1, max_length=80)
+
+
+class PublicProcessMode(StrEnum):
+    ADAPTIVE = "adaptive"
+    RELATIONSHIP_DEEP_DIVE = "relationship_deep_dive"
 
 
 class AgentPublicReflectionEvent(ContractModel):
@@ -155,6 +162,9 @@ class MemoryRecord(ContractModel):
     importance: float = Field(default=0.5, ge=0, le=1)
     relationship_relevance: float = Field(default=0, ge=0, le=1)
     topics: list[str] = Field(default_factory=list)
+    # Optional semantic vector written by Product API; absence degrades retrieval
+    # to the explainable lexical baseline instead of failing the turn.
+    embedding: list[float] | None = None
     enabled: bool = True
     conflicts_with: list[UUID] = Field(default_factory=list)
 
@@ -232,6 +242,7 @@ class AgentTurnRequest(ContractModel):
     message: str = Field(min_length=1, max_length=20_000)
     requested_mode: AgentMode | None = None
     persona_version_id: UUID | None = None
+    public_process_mode: PublicProcessMode = PublicProcessMode.ADAPTIVE
     context: AgentAuthorizedContext | None = None
 
 
@@ -247,10 +258,27 @@ class AgentTurnResponse(ContractModel):
     trace_id: UUID
 
 
+class AgentTurnResultEvent(ContractModel):
+    type: Literal["result"] = "result"
+    response: AgentTurnResponse
+
+
 class AgentReflectionRequest(ContractModel):
     user_id: UUID
     conversation_id: UUID
     message_ids: list[UUID] = Field(min_length=1)
+    transcript: list[RecentMessage] = Field(min_length=1, max_length=50)
+    persona: PersonaContext | None = None
+    memories: list[MemoryRecord] = Field(default_factory=list)
+
+
+class EmbeddingsRequest(ContractModel):
+    inputs: list[str] = Field(min_length=1, max_length=64)
+
+
+class EmbeddingsResponse(ContractModel):
+    model: str
+    embeddings: list[list[float]] = Field(min_length=1)
 
 
 class AgentReflectionResponse(ContractModel):
@@ -269,6 +297,19 @@ class PersonaInitializeRequest(ContractModel):
     answers: list[JourneyAnswer]
 
 
+class QuickStartAnswers(ContractModel):
+    mbti: str | None = Field(default=None, max_length=12)
+    zodiac: str | None = Field(default=None, max_length=20)
+    relationship_goal: str = Field(min_length=1, max_length=160)
+    communication_preference: str = Field(min_length=1, max_length=160)
+    social_preference: str = Field(min_length=1, max_length=160)
+
+
+class QuickStartPersonaDraftRequest(ContractModel):
+    request_id: UUID
+    answers: QuickStartAnswers
+
+
 class PersonaContent(ContractModel):
     identity: dict[str, Any] = Field(default_factory=dict)
     values: list[str] = Field(default_factory=list)
@@ -280,6 +321,11 @@ class PersonaContent(ContractModel):
     current_goals: list[str] = Field(default_factory=list)
     confirmed_patterns: list[str] = Field(default_factory=list)
     uncertain_hypotheses: list[str] = Field(default_factory=list)
+
+
+class QuickStartPersonaDraftResponse(ContractModel):
+    content: PersonaContent
+    model_version: str = Field(min_length=1, max_length=120)
 
 
 class ModelMetadata(ContractModel):
@@ -344,6 +390,8 @@ class LabTurn(ContractModel):
     memory_writes: list[LabMemoryWrite] = Field(default_factory=list)
     # Designed public thinking lines the model streamed before its JSON payload.
     thinking_steps: list[str] = Field(default_factory=list)
+    # Names of allowlisted internal tools that fired this turn.
+    tool_names: list[str] = Field(default_factory=list)
     persona_patch_candidates: list[PersonaPatchCandidate]
     relationship_candidates: list[RelationshipUpdateCandidate]
     cadence: ConversationCadence

@@ -3,6 +3,10 @@ import { AgentChatPage } from "../features/agent-chat/AgentChatPage.js";
 import { ExplorePage } from "../features/explore/ExplorePage.js";
 import { JourneyPage } from "../features/journey/JourneyPage.js";
 import { WelcomePage } from "../features/onboarding/WelcomePage.js";
+import { QuickStartPage } from "../features/onboarding/QuickStartPage.js";
+import { ClaimAgentPage } from "../features/onboarding/ClaimAgentPage.js";
+import { AgentBirthPage } from "../features/onboarding/AgentBirthPage.js";
+import { PersonaDraftPage } from "../features/persona/PersonaDraftPage.js";
 import { PatchReviewPage } from "../features/persona/PatchReviewPage.js";
 import { PersonaPage } from "../features/persona/PersonaPage.js";
 import { ProfilePage } from "../features/profile/ProfilePage.js";
@@ -17,7 +21,10 @@ const navigation = [
 
 export function App(): React.JSX.Element {
   const location = useLocation();
-  const immersive = location.pathname === "/" || location.pathname === "/journey";
+  const immersive =
+    ["/", "/journey", "/quick-start", "/persona-draft", "/claim-agent", "/agent-birth"].includes(
+      location.pathname,
+    ) || location.pathname.startsWith("/chat/");
 
   return (
     <div className="app-shell">
@@ -33,9 +40,14 @@ export function App(): React.JSX.Element {
         <Routes>
           <Route path="/" element={<WelcomePage />} />
           <Route path="/journey" element={<JourneyPage />} />
+          <Route path="/quick-start" element={<QuickStartPage />} />
+          <Route path="/persona-draft" element={<PersonaDraftPage />} />
+          <Route path="/claim-agent" element={<ClaimAgentPage />} />
+          <Route path="/agent-birth" element={<AgentBirthPage />} />
           <Route path="/persona" element={<PersonaPage />} />
           <Route path="/patch-review" element={<PatchReviewPage />} />
-          <Route path="/agent-chat" element={<AgentChatPage />} />
+          <Route path="/agent-chat" element={<Navigate to="/agent-birth" replace />} />
+          <Route path="/chat/:conversationId" element={<AgentChatPage />} />
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/relationships" element={<RelationshipsPage />} />
           <Route path="/profile" element={<ProfilePage />} />

@@ -41,6 +41,29 @@ def test_turn_records_correction_without_persona_mutation() -> None:
     assert payload["relationshipCandidates"] == []
 
 
+def test_product_turn_stream_emits_public_progress_then_a_result() -> None:
+    identifier = str(uuid4())
+    with client.stream(
+        "POST",
+        "/v1/agent/turn/stream",
+        json={
+            "requestId": identifier,
+            "userId": identifier,
+            "agentId": identifier,
+            "conversationId": identifier,
+            "message": "帮我认真看看我们适不适合",
+            "personaVersionId": None,
+            "publicProcessMode": "relationship_deep_dive",
+        },
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert '"type":"status"' in body
+    assert '"type":"result"' in body
+    assert '"publicProcessMode"' not in body
+
+
 def test_proxy_fails_closed_without_consent() -> None:
     identifier = str(uuid4())
     response = client.post(

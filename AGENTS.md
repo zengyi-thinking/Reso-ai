@@ -118,6 +118,7 @@ Reso Agent 不应表现为“等待计算 → 输出答案”的机器，而应�
 - `public_reflection` 必须引用授权 evidence，并对 Persona hypothesis 与弱证据保留不确定性。
 - `reconsidered` 必须由证据冲突或真实不确定性触发，不得随机制造“人味”或戏剧效果。
 - 浏览器、Session、Trace 与日志均不得接收或保存 Chain-of-Thought、`reasoning_details` 或 provider 原始响应。
+- 深度关系长链路必须由用户主动选择；阶段标签可以受控固定，但正文必须基于本轮授权上下文动态生成。证据不足时公开说明不足，不得伪造检索、匹配、沙盘或对方信息。
 
 ## Database Migration
 

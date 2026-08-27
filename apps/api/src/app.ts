@@ -10,6 +10,9 @@ import {
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { IAgentClient } from "./agent-client/agent-client.js";
 import { SessionService } from "./auth/session-service.js";
+import { EmailAuthService } from "./auth/email-auth-service.js";
+import type { EmailCodeMailer } from "./auth/email-mailer.js";
+import { UnconfiguredEmailCodeMailer } from "./auth/email-mailer.js";
 import { InMemoryJourneyRepository } from "./journeys/in-memory-journey-repository.js";
 import type { JourneyRepository } from "./journeys/journey-repository.js";
 import { JourneyService } from "./journeys/journey-service.js";
@@ -22,6 +25,12 @@ import { InMemoryWindowRateLimiter, type RateLimiter } from "./product/rate-limi
 import type { ProductRepository } from "./product/repository.js";
 import { TeaPartyQueryService } from "./product/tea-party-query-service.js";
 import { TeaPartyService } from "./product/tea-party-service.js";
+import { InMemoryVerticalSliceRepository } from "./vertical-slice/in-memory-repository.js";
+import type { VerticalSliceRepository } from "./vertical-slice/repository.js";
+import { OnboardingService } from "./vertical-slice/onboarding-service.js";
+import { ProductConversationService } from "./vertical-slice/conversation-service.js";
+import { GrowthCandidatesService } from "./vertical-slice/growth-candidates-service.js";
+import { registerVerticalSliceRoutes } from "./vertical-slice/routes.js";
 
 const requestTraceIds = new WeakMap<FastifyRequest, string>();
 
@@ -32,6 +41,11 @@ export interface BuildAppOptions {
   rateLimiter?: RateLimiter;
   sessionUserResolver?: SessionUserResolver;
   logger?: boolean;
+  verticalSliceRepository?: VerticalSliceRepository;
+  emailCodeMailer?: EmailCodeMailer;
+  authCodeHashSecret?: string;
+  authCodeTtlMs?: number;
+  authCodeResendMs?: number;
 }
 
 function createApiError(
@@ -56,6 +70,37 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const teaPartyService = new TeaPartyService(repository, options.agentClient);
   const teaPartyQueryService = new TeaPartyQueryService(repository, teaPartyService);
   const sessionService = new SessionService(repository);
+  const verticalSliceRepository =
+    options.verticalSliceRepository ?? new InMemoryVerticalSliceRepository();
+  const emailAuthService = new EmailAuthService(
+    verticalSliceRepository,
+    sessionService,
+    options.emailCodeMailer ?? new UnconfiguredEmailCodeMailer(),
+    {
+      hashSecret: options.authCodeHashSecret ?? "reso-development-auth-code-secret",
+      ...(options.authCodeTtlMs === undefined ? {} : { ttlMs: options.authCodeTtlMs }),
+      ...(options.authCodeResendMs === undefined
+        ? {}
+        : { resendCooldownMs: options.authCodeResendMs }),
+    },
+  );
+  const onboardingService = new OnboardingService(verticalSliceRepository, options.agentClient);
+  const productConversationService = new ProductConversationService(
+    verticalSliceRepository,
+    options.agentClient,
+  );
+  const growthCandidatesService = new GrowthCandidatesService(
+    verticalSliceRepository,
+    options.agentClient,
+  );
+  const resolveSessionUser = async (request: FastifyRequest): Promise<string | null> => {
+    const authorization = request.headers.authorization;
+    if (authorization !== undefined && authorization.startsWith("Bearer ")) {
+      const userId = await sessionService.resolve(authorization.slice("Bearer ".length).trim());
+      if (userId !== null) return userId;
+    }
+    return options.sessionUserResolver === undefined ? null : options.sessionUserResolver(request);
+  };
   await app.register(cors, { origin: false });
 
   app.setNotFoundHandler((_request, reply) =>
@@ -98,9 +143,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.get("/v1/health", async () => ({ service: "reso-api", status: "ok" }));
   registerJourneyRoutes(app, {
     journeyService,
-    ...(options.sessionUserResolver === undefined
-      ? {}
-      : { sessionUserResolver: options.sessionUserResolver }),
+    sessionUserResolver: resolveSessionUser,
+    traceIdFor,
+  });
+  registerVerticalSliceRoutes(app, {
+    emailAuth: emailAuthService,
+    onboarding: onboardingService,
+    conversations: productConversationService,
+    growth: growthCandidatesService,
+    resolveUser: resolveSessionUser,
     traceIdFor,
   });
 
@@ -135,7 +186,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { id: string } }>(
     "/api/connections/:id/assist/analyze",
     async (request, reply) => {
-      const userId = await requireSessionUser(request, options.sessionUserResolver);
+      const userId = await requireSessionUser(request, resolveSessionUser);
       const parsed = AnalyzeAssistBodySchema.safeParse(request.body);
       if (!parsed.success)
         throw new ProductError("VALIDATION_FAILED", "Invalid analyze request", false);
@@ -153,7 +204,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.post<{ Params: { id: string } }>(
     "/api/connections/:id/assist/polish",
     async (request, reply) => {
-      const userId = await requireSessionUser(request, options.sessionUserResolver);
+      const userId = await requireSessionUser(request, resolveSessionUser);
       const parsed = PolishAssistBodySchema.safeParse(request.body);
       if (!parsed.success)
         throw new ProductError("VALIDATION_FAILED", "Invalid polish request", false);
@@ -170,12 +221,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   );
 
   app.get<{ Params: { id: string } }>("/api/assist/:id", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     return reply.send(await assistService.getPrivateResult(request.params.id, userId));
   });
 
   app.post<{ Params: { id: string } }>("/api/connections/:id/messages", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     const body = request.body as { content?: unknown; clientMessageId?: unknown };
     if (
       typeof body?.content !== "string" ||
@@ -199,25 +250,25 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   app.get<{ Params: { id: string } }>("/api/connections/:id/tea-party", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     return reply.send(await teaPartyQueryService.get(request.params.id, userId));
   });
 
   app.post<{ Params: { id: string } }>(
     "/api/connections/:id/tea-party/retry",
     async (request, reply) => {
-      const userId = await requireSessionUser(request, options.sessionUserResolver);
+      const userId = await requireSessionUser(request, resolveSessionUser);
       return reply.send(await teaPartyQueryService.retry(request.params.id, userId));
     },
   );
 
   app.get("/api/notifications", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     return reply.send({ events: await teaPartyQueryService.listNotifications(userId) });
   });
 
   app.get("/api/notifications/stream", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     const traceId = traceIdFor(request);
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -254,7 +305,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   app.delete("/api/session", async (request, reply) => {
-    const userId = await requireSessionUser(request, options.sessionUserResolver);
+    const userId = await requireSessionUser(request, resolveSessionUser);
     const authorization = request.headers.authorization;
     if (authorization === undefined || !authorization.startsWith("Bearer ")) {
       throw new ProductError("AUTH_REQUIRED", "A valid server session is required", false);

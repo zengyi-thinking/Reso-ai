@@ -14,6 +14,7 @@ export function createAgentTurnRequest(
     conversationId: fixtureId,
     message: "今天有点累。",
     personaVersionId: null,
+    publicProcessMode: "adaptive",
     ...overrides,
   };
 }
