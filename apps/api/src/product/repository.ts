@@ -60,6 +60,12 @@ export interface ProductRepository {
     errorCode: string,
     availableAt: string,
   ): Promise<void>;
+  deadLetterOutboxEvent(
+    eventId: string,
+    workerId: string,
+    expectedAttempt: number,
+    errorCode: string,
+  ): Promise<void>;
   resolveSession(tokenHash: string): Promise<string | null>;
   createSession(userId: string, tokenHash: string, expiresAt: string): Promise<void>;
   revokeSession(tokenHash: string): Promise<void>;

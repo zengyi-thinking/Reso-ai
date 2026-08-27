@@ -16,6 +16,8 @@ import type {
   SocialActResponse,
   SocialEvaluateRequest,
   SocialEvaluateResponse,
+  PersonalManualCandidate,
+  PersonalManualGenerationRequest,
 } from "@reso/contracts";
 
 export interface IAgentClient {
@@ -23,6 +25,9 @@ export interface IAgentClient {
   polishDraft(request: PolishDraftRequest): Promise<PolishDraftResponse>;
   actSocially(request: SocialActRequest): Promise<SocialActResponse>;
   evaluateSocial(request: SocialEvaluateRequest): Promise<SocialEvaluateResponse>;
+  generatePersonalManual(
+    request: PersonalManualGenerationRequest,
+  ): Promise<PersonalManualCandidate>;
   turn(request: AgentTurnRequest): Promise<AgentTurnResponse>;
   reflect(request: AgentReflectionRequest): Promise<AgentReflectionResponse>;
   initializePersona(request: PersonaInitializeRequest): Promise<PersonaVersion>;

@@ -10,6 +10,10 @@ import {
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { IAgentClient } from "./agent-client/agent-client.js";
 import { SessionService } from "./auth/session-service.js";
+import { InMemoryJourneyRepository } from "./journeys/in-memory-journey-repository.js";
+import type { JourneyRepository } from "./journeys/journey-repository.js";
+import { JourneyService } from "./journeys/journey-service.js";
+import { registerJourneyRoutes, type SessionUserResolver } from "./journeys/routes.js";
 import { AssistService } from "./product/assist-service.js";
 import { HumanChatService } from "./product/human-chat-service.js";
 import { InMemoryProductRepository } from "./product/in-memory-repository.js";
@@ -24,8 +28,9 @@ const requestTraceIds = new WeakMap<FastifyRequest, string>();
 export interface BuildAppOptions {
   agentClient: IAgentClient;
   repository?: ProductRepository;
+  journeyRepository?: JourneyRepository;
   rateLimiter?: RateLimiter;
-  sessionUserResolver?: (request: FastifyRequest) => Promise<string | null>;
+  sessionUserResolver?: SessionUserResolver;
   logger?: boolean;
 }
 
@@ -40,6 +45,8 @@ function createApiError(
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false });
   const repository = options.repository ?? new InMemoryProductRepository();
+  const journeyRepository = options.journeyRepository ?? new InMemoryJourneyRepository();
+  const journeyService = new JourneyService(journeyRepository);
   const assistService = new AssistService(
     repository,
     options.agentClient,
@@ -89,6 +96,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.get("/health", async () => ({ service: "reso-api", status: "ok" }));
   app.get("/v1/health", async () => ({ service: "reso-api", status: "ok" }));
+  registerJourneyRoutes(app, {
+    journeyService,
+    ...(options.sessionUserResolver === undefined
+      ? {}
+      : { sessionUserResolver: options.sessionUserResolver }),
+    traceIdFor,
+  });
 
   app.post("/v1/agent/turn", async (request, reply) => {
     const parsed = AgentTurnRequestSchema.safeParse(request.body);

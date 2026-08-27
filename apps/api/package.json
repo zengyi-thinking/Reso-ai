@@ -16,6 +16,14 @@
     "./product/tea-party-service": {
       "types": "./dist/src/product/tea-party-service.d.ts",
       "import": "./dist/src/product/tea-party-service.js"
+    },
+    "./journeys/postgres-journey-repository": {
+      "types": "./dist/src/journeys/postgres-journey-repository.d.ts",
+      "import": "./dist/src/journeys/postgres-journey-repository.js"
+    },
+    "./journeys/personal-manual-generation-service": {
+      "types": "./dist/src/journeys/personal-manual-generation-service.d.ts",
+      "import": "./dist/src/journeys/personal-manual-generation-service.js"
     }
   },
   "scripts": {

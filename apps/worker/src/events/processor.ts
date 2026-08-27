@@ -15,6 +15,36 @@ export interface IdempotencyStore {
 
 export type EventHandler = (event: EventEnvelope) => Promise<void>;
 
+export function workerFailureCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z0-9_]+$/.test(error.code)
+  ) {
+    return error.code;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "retryable" in error &&
+    error.retryable === false &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    /^[A-Z0-9_]+$/.test(error.message)
+  ) {
+    return error.message;
+  }
+  return error instanceof Error ? error.name : "WORKER_ERROR";
+}
+
+export function shouldDeadLetterImmediately(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && "retryable" in error && error.retryable === false
+  );
+}
+
 export interface CommittedEventSource {
   /** Returns only events already committed to the Product DB outbox. */
   next(): Promise<Delivery | null>;

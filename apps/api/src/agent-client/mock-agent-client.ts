@@ -17,6 +17,10 @@ import type {
   SocialActResponse,
   SocialEvaluateRequest,
   SocialEvaluateResponse,
+  PersonalManualCandidate,
+  PersonalManualGenerationRequest,
+  PersonalManualVariableId,
+  PersonalManualSectionId,
 } from "@reso/contracts";
 import { AgentClientError, type IAgentClient } from "./agent-client.js";
 
@@ -92,6 +96,65 @@ export class MockAgentClient implements IAgentClient {
         conversationStarter: "可以聊聊各自最喜欢的散步路线",
       },
       traceId: request.traceId,
+    });
+  }
+
+  async generatePersonalManual(
+    request: PersonalManualGenerationRequest,
+  ): Promise<PersonalManualCandidate> {
+    this.assertAvailable();
+    const variableDefinitions = [
+      ["crisisInstinct", "危机中的行动起点"],
+      ["involuntaryReaction", "压力下的自然反应"],
+      ["incompatiblePattern", "需要谨慎相处的模式"],
+      ["possibleMisreading", "可能出现的相互误读"],
+      ["negativeFeeling", "冲突中容易出现的感受"],
+      ["relationshipRedLine", "关系中的重要边界"],
+      ["repairAction", "更容易接住的修复行动"],
+      ["recoveryNeed", "恢复连接时的需要"],
+      ["lifeVision", "当前显现的人生方向"],
+    ] satisfies ReadonlyArray<readonly [PersonalManualVariableId, string]>;
+    const sectionDefinitions = [
+      ["deepNeed", "表层标签与深层关系需求"],
+      ["defense", "极限压力下的防御本能"],
+      ["incompatible", "冲突与需要避开的模式"],
+      ["repair", "合适的冲突修复与支持蓝图"],
+      ["vision", "人生愿景与关系方向"],
+    ] satisfies ReadonlyArray<readonly [PersonalManualSectionId, string]>;
+    const variables = variableDefinitions.map(([id, name], index) => {
+      const item = request.evidence[index % request.evidence.length];
+      if (item === undefined) throw new Error("Mock Personal Manual requires Journey evidence");
+      const confidence: "low" | "medium" = item.choiceId === "free-response" ? "low" : "medium";
+      return {
+        id,
+        name,
+        description: `${item.summary}。这是基于当前旅程证据的可修正理解，不是固定人格结论。`,
+        confidence,
+        evidenceRefs: [item.evidenceRef],
+      };
+    });
+    const sections = sectionDefinitions.map(([id, title], index) => {
+      const first = request.evidence[index % request.evidence.length];
+      const second = request.evidence[(index + 1) % request.evidence.length];
+      if (first === undefined || second === undefined) {
+        throw new Error("Mock Personal Manual requires Journey evidence");
+      }
+      const confidence = "medium" as const;
+      return {
+        id,
+        title,
+        content: `${first.summary}；同时，${second.summary}。后续真实经历可以继续补充或纠正这一理解。`,
+        confidence,
+        evidenceRefs: [first.evidenceRef, second.evidenceRef],
+      };
+    });
+    return Promise.resolve({
+      variables,
+      sections,
+      updateSummary: `根据 ${request.evidence.length} 条 Journey Evidence 生成首版个人说明书。`,
+      traceId: request.traceId,
+      agentVersionId: null,
+      modelVersion: "mock-personal-manual-v1",
     });
   }
 

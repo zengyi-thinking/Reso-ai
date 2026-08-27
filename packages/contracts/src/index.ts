@@ -6,6 +6,7 @@ export * from "./conversation.js";
 export * from "./events.js";
 export * from "./errors.js";
 export * from "./lab.js";
+export * from "./journey.js";
 export * from "./memory.js";
 export * from "./persona.js";
 export * from "./recommendation.js";

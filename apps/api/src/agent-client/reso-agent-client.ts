@@ -25,6 +25,9 @@ import {
   type SocialActResponse,
   type SocialEvaluateRequest,
   type SocialEvaluateResponse,
+  PersonalManualCandidateSchema,
+  type PersonalManualCandidate,
+  type PersonalManualGenerationRequest,
 } from "@reso/contracts";
 import type { z } from "zod";
 import { AgentClientError, type IAgentClient } from "./agent-client.js";
@@ -68,6 +71,12 @@ export class ResoAgentClient implements IAgentClient {
 
   async evaluateSocial(request: SocialEvaluateRequest): Promise<SocialEvaluateResponse> {
     return this.post("/v1/social/evaluate", request, SocialEvaluateResponseSchema);
+  }
+
+  async generatePersonalManual(
+    request: PersonalManualGenerationRequest,
+  ): Promise<PersonalManualCandidate> {
+    return this.post("/v1/personal-manual/generate", request, PersonalManualCandidateSchema);
   }
 
   async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
