@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from reso_agent.app import app
-from reso_agent.contracts import AgentTurnRequest, AgentTurnResponse
+from reso_agent.contracts import AgentTurnRequest, AgentTurnResponse, PersonalManualContent
 
 client = TestClient(app)
 FIXTURE_DIRECTORY = Path(__file__).parents[3] / "packages" / "contracts" / "fixtures"
@@ -76,6 +76,66 @@ def test_shared_invalid_agent_turn_fixture_is_rejected() -> None:
         AgentTurnRequest.model_validate(fixture["request"])
     with pytest.raises(ValidationError):
         AgentTurnResponse.model_validate(fixture["response"])
+
+
+def test_shared_personal_manual_fixtures_match_python_contract() -> None:
+    valid = json.loads(
+        (FIXTURE_DIRECTORY / "personal-manual.valid.json").read_text(encoding="utf-8")
+    )
+    invalid = json.loads(
+        (FIXTURE_DIRECTORY / "personal-manual.invalid.json").read_text(encoding="utf-8")
+    )
+    assert len(PersonalManualContent.model_validate(valid).variables) == 9
+    with pytest.raises(ValidationError):
+        PersonalManualContent.model_validate(invalid)
+
+
+def test_personal_manual_generate_uses_configured_provider_and_preserves_evidence_refs() -> None:
+    journey_id = str(uuid4())
+    evidence_snapshot_id = str(uuid4())
+    trace_id = str(uuid4())
+    evidence = [
+        {
+            "evidenceRef": f"mountain-v1/q{index}/c{index}@{uuid4()}",
+            "journeyVersion": "mountain-v1",
+            "stageId": f"q{index}",
+            "questionId": f"q{index}",
+            "choiceId": f"c{index}",
+            "optionText": "一个由服务端登记的选项",
+            "responseText": None,
+            "target": "self",
+            "summary": "在当前场景中表现出一种可继续验证的偏好",
+            "signals": [{"dimension": "support", "value": "observed", "weight": 1}],
+            "contextTags": ["test"],
+            "pressure": "medium",
+            "companionMood": None,
+            "elapsedMs": 100,
+            "answeredAt": "2026-08-27T08:00:00+08:00",
+        }
+        for index in range(7)
+    ]
+    response = client.post(
+        "/v1/personal-manual/generate",
+        json={
+            "requestId": str(uuid4()),
+            "journeyId": journey_id,
+            "journeyVersion": "mountain-v1",
+            "evidenceSnapshotId": evidence_snapshot_id,
+            "evidenceSignature": "a" * 64,
+            "evidence": evidence,
+            "traceId": trace_id,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["traceId"] == trace_id
+    assert len(payload["variables"]) == 9
+    assert len(payload["sections"]) == 5
+    allowed_refs = {item["evidenceRef"] for item in evidence}
+    assert all(
+        set(item["evidenceRefs"]).issubset(allowed_refs)
+        for item in [*payload["variables"], *payload["sections"]]
+    )
 
 
 def test_persona_initialize_derives_hypotheses_from_journey_answers() -> None:

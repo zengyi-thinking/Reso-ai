@@ -5,11 +5,15 @@ import {
   PostgresProductRepository,
 } from "@reso/api/product/postgres-repository";
 import { TeaPartyService } from "@reso/api/product/tea-party-service";
+import { PostgresJourneyRepository } from "@reso/api/journeys/postgres-journey-repository";
+import { PersonalManualGenerationService } from "@reso/api/journeys/personal-manual-generation-service";
 import { RuntimeConfigSchema } from "@reso/config";
 import { EventEnvelopeSchema } from "@reso/contracts";
 import { handleSocialMission } from "./social_jobs/handler.js";
+import { handleJourneyCompleted } from "./persona_jobs/handler.js";
+import { shouldDeadLetterImmediately, workerFailureCode } from "./events/processor.js";
 
-export const workerQueues = ["social_jobs"] as const;
+export const workerQueues = ["social_jobs", "persona_jobs"] as const;
 
 const config = RuntimeConfigSchema.parse(process.env);
 if (config.PRODUCT_REPOSITORY !== "postgres") {
@@ -23,6 +27,8 @@ const agentClient = createAgentClient(config.AGENT_SERVICE_URL, {
   serviceToken: config.AGENT_SERVICE_TOKEN,
 });
 const teaPartyService = new TeaPartyService(repository, agentClient);
+const journeyRepository = new PostgresJourneyRepository(pool);
+const personalManualService = new PersonalManualGenerationService(journeyRepository, agentClient);
 const workerId = `social-worker:${randomUUID()}`;
 const supportedEvents = [
   "connection.established",
@@ -30,6 +36,7 @@ const supportedEvents = [
   "consent.granted",
   "consent.revoked",
   "connection.blocked",
+  "journey.completed",
 ];
 let stopping = false;
 const stop = (): void => {
@@ -69,18 +76,24 @@ while (!stopping) {
       continue;
     }
     try {
-      const handled = await handleSocialMission(envelope.data, teaPartyService);
+      const handled =
+        (await handleJourneyCompleted(envelope.data, personalManualService)) ||
+        (await handleSocialMission(envelope.data, teaPartyService));
       if (!handled) throw new Error("UNSUPPORTED_EVENT");
       await repository.completeOutboxEvent(event.id, workerId, event.attempts ?? 1);
     } catch (error) {
-      const code = error instanceof Error ? error.name : "WORKER_ERROR";
-      await repository.retryOutboxEvent(
-        event.id,
-        workerId,
-        event.attempts ?? 1,
-        code,
-        retryAt(event.attempts ?? 1),
-      );
+      const code = workerFailureCode(error);
+      if (shouldDeadLetterImmediately(error)) {
+        await repository.deadLetterOutboxEvent(event.id, workerId, event.attempts ?? 1, code);
+      } else {
+        await repository.retryOutboxEvent(
+          event.id,
+          workerId,
+          event.attempts ?? 1,
+          code,
+          retryAt(event.attempts ?? 1),
+        );
+      }
     }
   }
   if (events.length === 0) await delay(config.WORKER_POLL_MS);

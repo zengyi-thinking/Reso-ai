@@ -604,6 +604,42 @@ export class PostgresProductRepository implements ProductRepository {
     }
   }
 
+  async deadLetterOutboxEvent(
+    eventId: string,
+    workerId: string,
+    expectedAttempt: number,
+    errorCode: string,
+  ): Promise<void> {
+    const consumerName = consumerNameFor(workerId);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const failed = await client.query(
+        `UPDATE event_consumptions SET
+           status='failed',attempt_count=5,last_error=$4,available_at=now(),updated_at=now()
+          WHERE consumer_name=$1 AND event_id=$2 AND status='processing' AND attempt_count=$3`,
+        [consumerName, eventId, expectedAttempt, errorCode],
+      );
+      if (failed.rowCount === 1) {
+        await client.query(
+          `INSERT INTO dead_letter_events
+             (consumer_name,event_id,event_type,payload,attempt_count,
+              failure_code,failure_message)
+           SELECT $1,e.id,e.event_type,e.payload,5,$3,$3
+             FROM event_outbox e WHERE e.id=$2
+           ON CONFLICT (consumer_name,event_id) DO NOTHING`,
+          [consumerName, eventId, errorCode],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async resolveSession(tokenHash: string): Promise<string | null> {
     const result = await this.pool.query<{ user_id: string } & QueryResultRow>(
       `UPDATE user_sessions SET last_seen_at=now()

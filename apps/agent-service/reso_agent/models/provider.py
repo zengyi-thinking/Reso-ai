@@ -36,6 +36,7 @@ class ModelRequest:
     # "reconsider" receives the draft and produces a revised final stance.
     generation_phase: str = "single"
     draft_text: str | None = None
+    max_output_tokens: int = 700
 
 
 _RELATIONSHIP_HINTS = ("她", "他", "朋友", "关系", "聊天", "回复", "冷淡", "疏远")
@@ -138,12 +139,66 @@ class DeterministicModelProvider:
                 },
                 ensure_ascii=False,
             )
+        elif request.generation_phase == "personal_manual_generate":
+            payload = json.loads(request.user_message)
+            evidence = payload["evidence"]
+            variable_definitions = [
+                ("crisisInstinct", "危机中的行动起点"),
+                ("involuntaryReaction", "压力下的自然反应"),
+                ("incompatiblePattern", "需要谨慎相处的模式"),
+                ("possibleMisreading", "可能出现的相互误读"),
+                ("negativeFeeling", "冲突中容易出现的感受"),
+                ("relationshipRedLine", "关系中的重要边界"),
+                ("repairAction", "更容易接住的修复行动"),
+                ("recoveryNeed", "恢复连接时的需要"),
+                ("lifeVision", "当前显现的人生方向"),
+            ]
+            section_definitions = [
+                ("deepNeed", "表层标签与深层关系需求"),
+                ("defense", "极限压力下的防御本能"),
+                ("incompatible", "冲突与需要避开的模式"),
+                ("repair", "合适的冲突修复与支持蓝图"),
+                ("vision", "人生愿景与关系方向"),
+            ]
+            content = json.dumps(
+                {
+                    "variables": [
+                        {
+                            "id": variable_id,
+                            "name": name,
+                            "description": (
+                                f"{evidence[index % len(evidence)]['summary']}。"
+                                "这是可修正的初步理解，不是固定结论。"
+                            ),
+                            "confidence": "medium",
+                            "evidenceRefs": [evidence[index % len(evidence)]["evidenceRef"]],
+                        }
+                        for index, (variable_id, name) in enumerate(variable_definitions)
+                    ],
+                    "sections": [
+                        {
+                            "id": section_id,
+                            "title": title,
+                            "content": (
+                                f"{evidence[index % len(evidence)]['summary']}。"
+                                "后续真实经历可以继续补充或纠正。"
+                            ),
+                            "confidence": "medium",
+                            "evidenceRefs": [evidence[index % len(evidence)]["evidenceRef"]],
+                        }
+                        for index, (section_id, title) in enumerate(section_definitions)
+                    ],
+                    "updateSummary": f"根据 {len(evidence)} 条 Journey Evidence 生成首版说明书。",
+                },
+                ensure_ascii=False,
+            )
         relationship = any(hint in request.user_message for hint in _RELATIONSHIP_HINTS)
         if request.generation_phase in {
             "assist_analyze",
             "assist_polish",
             "tea_party_act",
             "tea_party_evaluate",
+            "personal_manual_generate",
         }:
             pass
         elif request.generation_phase == "draft":
@@ -289,7 +344,7 @@ class MiniMaxModelProvider:
                         *self._messages(request),
                     ],
                     "temperature": 0.7,
-                    "max_completion_tokens": 700,
+                    "max_completion_tokens": request.max_output_tokens,
                     "stream": False,
                     "reasoning_split": True,
                 },
@@ -316,7 +371,7 @@ class MiniMaxModelProvider:
                     "system": request.system_prompt,
                     "messages": self._messages(request),
                     "temperature": 0.7,
-                    "max_tokens": 700,
+                    "max_tokens": request.max_output_tokens,
                 },
             )
             response.raise_for_status()
@@ -351,7 +406,7 @@ class MiniMaxModelProvider:
                     "system": request.system_prompt,
                     "messages": self._messages(request),
                     "temperature": 0.7,
-                    "max_tokens": 700,
+                    "max_tokens": request.max_output_tokens,
                     "stream": True,
                 },
             ) as response,

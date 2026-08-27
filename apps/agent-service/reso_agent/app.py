@@ -32,6 +32,8 @@ from reso_agent.contracts import (
     LabUser,
     PersonaContent,
     PersonaInitializeRequest,
+    PersonalManualCandidate,
+    PersonalManualGenerationRequest,
     PersonaVersion,
     PolishDraftRequest,
     PolishDraftResponse,
@@ -115,6 +117,21 @@ async def polish_draft(
         return await product_tasks.polish_draft(request)
     except ModelProviderError as error:
         raise HTTPException(status_code=502, detail="Agent Assist polish failed") from error
+
+
+@app.post(
+    "/v1/personal-manual/generate",
+    response_model=PersonalManualCandidate,
+    response_model_by_alias=True,
+)
+async def generate_personal_manual(
+    request: PersonalManualGenerationRequest,
+    _auth: None = Depends(require_service_auth),
+) -> PersonalManualCandidate:
+    try:
+        return await product_tasks.generate_personal_manual(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Personal Manual generation failed") from error
 
 
 @app.post(

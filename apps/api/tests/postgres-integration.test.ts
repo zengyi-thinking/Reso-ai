@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { JourneyAttemptSchema } from "@reso/contracts";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { TestAgentClient } from "./test-agent-client.js";
@@ -10,6 +11,8 @@ import {
 } from "../src/product/postgres-repository.js";
 import { PostgresWindowRateLimiter } from "../src/product/rate-limiter.js";
 import { TeaPartyService } from "../src/product/tea-party-service.js";
+import { PostgresJourneyRepository } from "../src/journeys/postgres-journey-repository.js";
+import { PersonalManualGenerationService } from "../src/journeys/personal-manual-generation-service.js";
 
 const databaseUrl = process.env["TEST_DATABASE_URL"];
 const describePostgres = databaseUrl === undefined ? describe.skip : describe;
@@ -22,9 +25,11 @@ const connectionId = "0198d4f3-2f34-7c52-95cc-7ff4f6f93c01";
 const messageId = "0198d4f3-2f34-7c52-95cc-7ff4f6f93d01";
 const traceId = "0198d4f3-2f34-7c52-95cc-7ff4f6f93e01";
 const sessionToken = "integration-session-token-that-is-long-enough-0001";
+const sessionTokenB = "integration-session-token-that-is-long-enough-0002";
 
 const pool = databaseUrl === undefined ? undefined : createPostgresPool(databaseUrl, { max: 4 });
 const repository = pool === undefined ? undefined : new PostgresProductRepository(pool);
+const journeyRepository = pool === undefined ? undefined : new PostgresJourneyRepository(pool);
 let app: FastifyInstance | undefined;
 
 describePostgres("PostgreSQL Product Backend integration", () => {
@@ -61,8 +66,13 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     );
     await pool!.query(
       `INSERT INTO user_sessions (user_id,token_hash,expires_at)
-       VALUES ($1,$2,now()+interval '1 hour')`,
-      [userA, createHash("sha256").update(sessionToken).digest("hex")],
+       VALUES ($1,$2,now()+interval '1 hour'),($3,$4,now()+interval '1 hour')`,
+      [
+        userA,
+        createHash("sha256").update(sessionToken).digest("hex"),
+        userB,
+        createHash("sha256").update(sessionTokenB).digest("hex"),
+      ],
     );
   });
 
@@ -86,6 +96,172 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     expect(interactions.map((item) => item.turnNo)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
+  it("persists the Journey → Manual → Persona V1 claim through Product API transactions", async () => {
+    if (pool === undefined || repository === undefined || journeyRepository === undefined) {
+      throw new Error("PostgreSQL integration test requires TEST_DATABASE_URL");
+    }
+    app = await buildApp({
+      agentClient: new TestAgentClient(),
+      repository,
+      journeyRepository,
+      sessionUserResolver: new PostgresSessionResolver(repository).resolve,
+    });
+    const headers = { authorization: `Bearer ${sessionToken}`, "x-trace-id": traceId };
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/journeys",
+      headers,
+      payload: { journeyVersion: "mountain-v1", clientAttemptId: randomUUID() },
+    });
+    expect(created.statusCode).toBe(201);
+    const journeyId = created.json().attempt.id;
+    const answers = [
+      ["invitation", "planned"],
+      ["fatigue", "empathize"],
+      ["slip", "support"],
+      ["storm-thought", "protect"],
+      ["cave-repair", "hug"],
+      ["home-message", "secure"],
+      ["city-realization", "build"],
+    ];
+    const concurrentAnswers = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/answers`,
+        headers,
+        payload: {
+          stageId: "invitation",
+          questionId: "invitation",
+          choiceId: "planned",
+          elapsedMs: 100,
+          clientAnswerId: randomUUID(),
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/answers`,
+        headers,
+        payload: {
+          stageId: "invitation",
+          questionId: "invitation",
+          choiceId: "escape",
+          elapsedMs: 200,
+          clientAnswerId: randomUUID(),
+        },
+      }),
+    ]);
+    expect(concurrentAnswers.map(({ statusCode }) => statusCode).sort()).toEqual([201, 409]);
+
+    for (const [questionId, choiceId] of answers.slice(1)) {
+      const saved = await app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/answers`,
+        headers,
+        payload: {
+          stageId: questionId,
+          questionId,
+          choiceId,
+          elapsedMs: 100,
+          clientAnswerId: randomUUID(),
+        },
+      });
+      expect(saved.statusCode).toBe(201);
+    }
+    const completed = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/complete`,
+      headers,
+    });
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json().personalManual.status).toBe("generating");
+    const eventCount = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM event_outbox WHERE event_type='journey.completed' AND aggregate_id=$1",
+      [journeyId],
+    );
+    expect(eventCount.rows[0]?.count).toBe("1");
+
+    await pool.query(
+      `UPDATE personal_manual_snapshots SET
+         status='failed',retryable=true,error_code='AGENT_TIMEOUT'
+       WHERE journey_id=$1`,
+      [journeyId],
+    );
+    const retryId = randomUUID();
+    const queuedRetry = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/personal-manual/retry`,
+      headers,
+      payload: { clientRetryId: retryId },
+    });
+    expect(queuedRetry.json().status).toBe("generating");
+    await pool.query(
+      `UPDATE personal_manual_snapshots SET
+         status='failed',retryable=true,error_code='AGENT_TIMEOUT'
+       WHERE journey_id=$1`,
+      [journeyId],
+    );
+    const staleRetry = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/personal-manual/retry`,
+      headers,
+      payload: { clientRetryId: retryId },
+    });
+    expect(staleRetry.json().status).toBe("failed");
+    const freshRetry = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/personal-manual/retry`,
+      headers,
+      payload: { clientRetryId: randomUUID() },
+    });
+    expect(freshRetry.json().status).toBe("generating");
+    const retryEvents = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM event_outbox WHERE idempotency_key LIKE $1",
+      [`personal-manual.retry:${journeyId}:%`],
+    );
+    expect(retryEvents.rows[0]?.count).toBe("2");
+
+    await new PersonalManualGenerationService(journeyRepository, new TestAgentClient()).generate(
+      journeyId,
+      traceId,
+    );
+    const reconstructed = new PostgresJourneyRepository(pool);
+    expect((await reconstructed.getPersonalManual(journeyId))?.status).toBe("ready");
+    expect((await reconstructed.getJourneyAttempt(journeyId))?.status).toBe("completed");
+    expect(await reconstructed.listJourneyAnswers(journeyId)).toHaveLength(7);
+    const visible = await app.inject({
+      method: "GET",
+      url: `/api/journeys/${journeyId}/personal-manual`,
+      headers,
+    });
+    expect(visible.statusCode).toBe(200);
+    expect(visible.json().currentContent.variables).toHaveLength(9);
+
+    const [claimed, repeated] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/claim-agent`,
+        headers,
+        payload: { clientClaimId: randomUUID() },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/claim-agent`,
+        headers,
+        payload: { clientClaimId: randomUUID() },
+      }),
+    ]);
+    expect(claimed.statusCode, claimed.body).toBe(200);
+    expect(claimed.json().personaVersion.version).toBe(1);
+    expect(claimed.json().personaVersion.confirmedByUser).toBe(true);
+    expect(repeated.json().personaVersion.id).toBe(claimed.json().personaVersion.id);
+    expect(repeated.json().agent.id).toBe(claimed.json().agent.id);
+    const personaEvents = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM event_outbox WHERE event_type='persona.created' AND aggregate_id=$1",
+      [claimed.json().personaVersion.id],
+    );
+    expect(personaEvents.rows[0]?.count).toBe("1");
+  });
+
   it("serializes tea-party runners across PostgreSQL repository instances", async () => {
     const otherRepository = new PostgresProductRepository(pool!);
     const releaseFirst = await repository!.acquireTeaPartyRunLock(connectionId);
@@ -95,6 +271,197 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     const releaseSecond = await otherRepository.acquireTeaPartyRunLock(connectionId);
     expect(releaseSecond).not.toBeNull();
     await releaseSecond!();
+  });
+
+  it("claims an anonymous Journey only with its hashed bearer credential", async () => {
+    app = await buildApp({
+      agentClient: new TestAgentClient(),
+      repository: repository!,
+      journeyRepository: journeyRepository!,
+      sessionUserResolver: new PostgresSessionResolver(repository!).resolve,
+    });
+    const anonymousToken = "anonymous-journey-token-with-at-least-43-characters-0001";
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/journeys",
+      payload: {
+        journeyVersion: "mountain-v1",
+        clientAttemptId: randomUUID(),
+        anonymousAccessToken: anonymousToken,
+      },
+    });
+    const journeyId = created.json().attempt.id;
+    const denied = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/claim-ownership`,
+      headers: {
+        authorization: `Bearer ${sessionTokenB}`,
+        "x-journey-token": "wrong-anonymous-token-with-at-least-43-characters-01",
+      },
+      payload: { clientClaimId: randomUUID() },
+    });
+    const claimed = await app.inject({
+      method: "POST",
+      url: `/api/journeys/${journeyId}/claim-ownership`,
+      headers: {
+        authorization: `Bearer ${sessionToken}`,
+        "x-journey-token": anonymousToken,
+      },
+      payload: { clientClaimId: randomUUID() },
+    });
+    const stored = await pool!.query<{
+      user_id: string | null;
+      anonymous_token_hash: string | null;
+    }>("SELECT user_id,anonymous_token_hash FROM journeys WHERE id=$1", [journeyId]);
+    expect(denied.statusCode).toBe(403);
+    expect(claimed.statusCode).toBe(200);
+    expect(stored.rows[0]).toEqual({ user_id: userA, anonymous_token_hash: null });
+    expect(JSON.stringify(stored.rows[0])).not.toContain(anonymousToken);
+  });
+
+  it("allows only one official Journey when concurrent clients omit replay metadata", async () => {
+    app = await buildApp({
+      agentClient: new TestAgentClient(),
+      repository: repository!,
+      journeyRepository: journeyRepository!,
+      sessionUserResolver: new PostgresSessionResolver(repository!).resolve,
+    });
+    const attempts = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/journeys",
+        headers: { authorization: `Bearer ${sessionToken}` },
+        payload: { journeyVersion: "mountain-v1", clientAttemptId: randomUUID() },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/journeys",
+        headers: { authorization: `Bearer ${sessionToken}` },
+        payload: { journeyVersion: "mountain-v1", clientAttemptId: randomUUID() },
+      }),
+    ]);
+    expect(attempts.map(({ statusCode }) => statusCode)).toEqual([201, 201]);
+    const records = attempts.map((response) => JourneyAttemptSchema.parse(response.json().attempt));
+    expect(records.map(({ official }) => official).sort()).toEqual([false, true]);
+    const official = records.find((record) => record.official === true);
+    const replay = records.find((record) => record.official === false);
+    if (official === undefined || replay === undefined) {
+      throw new Error("Expected one official Journey and one replay");
+    }
+    expect(replay.replayOfJourneyId).toBe(official.id);
+    const officialCount = await pool!.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM journeys WHERE user_id=$1 AND version='mountain-v1' AND official=true",
+      [userA],
+    );
+    expect(officialCount.rows[0]?.count).toBe("1");
+  });
+
+  it("rolls back Journey completion, Evidence, Manual, and Outbox together", async () => {
+    app = await buildApp({
+      agentClient: new TestAgentClient(),
+      repository: repository!,
+      journeyRepository: journeyRepository!,
+      sessionUserResolver: new PostgresSessionResolver(repository!).resolve,
+    });
+    const headers = { authorization: `Bearer ${sessionToken}`, "x-trace-id": traceId };
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/journeys",
+      headers,
+      payload: { journeyVersion: "mountain-v1", clientAttemptId: randomUUID() },
+    });
+    const journeyId = created.json().attempt.id;
+    const choices = [
+      ["invitation", "planned"],
+      ["fatigue", "empathize"],
+      ["slip", "support"],
+      ["storm-thought", "protect"],
+      ["cave-repair", "hug"],
+      ["home-message", "secure"],
+      ["city-realization", "build"],
+    ] satisfies ReadonlyArray<readonly [string, string]>;
+    for (const [questionId, choiceId] of choices) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/journeys/${journeyId}/answers`,
+        headers,
+        payload: {
+          stageId: questionId,
+          questionId,
+          choiceId,
+          clientAnswerId: randomUUID(),
+        },
+      });
+      expect(response.statusCode).toBe(201);
+    }
+    const answers = await journeyRepository!.listJourneyAnswers(journeyId);
+    const completedAt = new Date().toISOString();
+    const evidenceSnapshotId = randomUUID();
+    const manualSnapshotId = randomUUID();
+    await expect(
+      journeyRepository!.completeJourney({
+        journeyId,
+        expectedQuestionIds: choices.map(([questionId]) => questionId),
+        evidenceSnapshot: {
+          id: evidenceSnapshotId,
+          journeyId,
+          journeyVersion: "mountain-v1",
+          evidenceVersion: 1,
+          official: true,
+          evidenceSignature: "b".repeat(64),
+          items: answers.map(({ evidence }) => evidence),
+          createdAt: completedAt,
+        },
+        manualSnapshot: {
+          id: manualSnapshotId,
+          journeyId,
+          status: "generating",
+          evidenceSignature: "b".repeat(64),
+          originalContent: null,
+          currentContent: null,
+          revision: 1,
+          currentSource: "agent_generated",
+          retryable: false,
+          errorCode: null,
+          agentTraceId: null,
+          agentVersionId: null,
+          modelVersion: null,
+          personaVersionId: null,
+          agentId: null,
+          createdAt: completedAt,
+          updatedAt: completedAt,
+          generatedAt: null,
+          claimedAt: null,
+        },
+        event: {
+          id: randomUUID(),
+          eventType: "journey.completed",
+          subjectId: journeyId,
+          traceId,
+          idempotencyKey: `journey.completed:${journeyId}`,
+          payload: { journeyId, evidenceSnapshotId, personalManualSnapshotId: manualSnapshotId },
+          occurredAt: completedAt,
+        },
+        audit: {
+          id: randomUUID(),
+          actorUserId: randomUUID(),
+          action: "journey.complete",
+          subjectId: journeyId,
+          traceId,
+          outcome: "completed",
+          metadata: {},
+          createdAt: completedAt,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "23503" });
+    expect((await journeyRepository!.getJourneyAttempt(journeyId))?.status).toBe("started");
+    expect(await journeyRepository!.getJourneyEvidenceSnapshot(journeyId)).toBeNull();
+    expect(await journeyRepository!.getPersonalManual(journeyId)).toBeNull();
+    const outbox = await pool!.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM event_outbox WHERE aggregate_id=$1",
+      [journeyId],
+    );
+    expect(outbox.rows[0]?.count).toBe("0");
   });
 
   it("uses a hashed production session and keeps Assist private", async () => {
@@ -307,5 +674,45 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     );
     expect(state.rows[0]?.attempt_count).toBe(5);
     expect(state.rows[0]?.dead_lettered).toBe(true);
+  });
+
+  it("immediately dead-letters a non-retryable Agent schema failure", async () => {
+    const eventId = "0198d4f3-2f34-7c52-95cc-7ff4f6f93f09";
+    await repository!.saveOutboxEvent({
+      id: eventId,
+      eventType: "journey.completed",
+      subjectId: connectionId,
+      traceId,
+      idempotencyKey: "invalid-personal-manual-candidate",
+      payload: {
+        journeyId: connectionId,
+        evidenceSnapshotId: messageId,
+        personalManualSnapshotId: traceId,
+      },
+      occurredAt: new Date().toISOString(),
+    });
+    const claimed = await repository!.claimOutboxEvents(
+      "persona-worker:first",
+      ["journey.completed"],
+      1,
+    );
+    await repository!.deadLetterOutboxEvent(
+      claimed[0]!.id,
+      "persona-worker:first",
+      claimed[0]!.attempts ?? 1,
+      "AGENT_INVALID_RESPONSE",
+    );
+    expect(
+      await repository!.claimOutboxEvents("persona-worker:second", ["journey.completed"], 1),
+    ).toEqual([]);
+    const deadLetter = await pool!.query<{ failure_code: string; attempt_count: number }>(
+      `SELECT failure_code,attempt_count FROM dead_letter_events
+        WHERE consumer_name='persona-worker' AND event_id=$1`,
+      [eventId],
+    );
+    expect(deadLetter.rows[0]).toEqual({
+      failure_code: "AGENT_INVALID_RESPONSE",
+      attempt_count: 5,
+    });
   });
 });

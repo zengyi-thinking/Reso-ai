@@ -12,6 +12,9 @@ from reso_agent.contracts import (
     AnalyzeIncomingRequest,
     AnalyzeIncomingResponse,
     DisclosureDecisionV1,
+    PersonalManualCandidate,
+    PersonalManualContent,
+    PersonalManualGenerationRequest,
     PolishCandidate,
     PolishDraftRequest,
     PolishDraftResponse,
@@ -84,6 +87,36 @@ class ProductTaskRuntime:
         except (ValidationError, ValueError) as error:
             raise ModelProviderError("MiniMax returned an invalid draft polish result") from error
         return PolishDraftResponse(candidates=candidates, trace_id=request.trace_id)
+
+    async def generate_personal_manual(
+        self, request: PersonalManualGenerationRequest
+    ) -> PersonalManualCandidate:
+        raw = await self._generate(
+            prompt="personal_manual_generate/v1.md",
+            phase="personal_manual_generate",
+            mode=AgentMode.MIRROR,
+            payload={
+                "journeyVersion": request.journey_version,
+                "evidence": [
+                    item.model_dump(by_alias=True, mode="json") for item in request.evidence
+                ],
+            },
+            max_output_tokens=2_400,
+        )
+        try:
+            payload = self._json_object(raw)
+            self._clip_personal_manual_text(payload)
+            plan = PersonalManualContent.model_validate(payload)
+        except (ValidationError, ValueError) as error:
+            raise ModelProviderError("MiniMax returned an invalid Personal Manual") from error
+        return PersonalManualCandidate(
+            variables=plan.variables,
+            sections=plan.sections,
+            update_summary=plan.update_summary,
+            trace_id=request.trace_id,
+            agent_version_id=None,
+            model_version="personal-manual-v1",
+        )
 
     async def act_socially(self, request: SocialActRequestV1) -> SocialActResponseV1:
         raw = await self._generate(
@@ -158,6 +191,7 @@ class ProductTaskRuntime:
         phase: str,
         mode: AgentMode,
         payload: dict[str, Any],
+        max_output_tokens: int = 700,
     ) -> str:
         system_prompt = (_PROMPT_ROOT / prompt).read_text(encoding="utf-8")
         response = await self._provider.generate(
@@ -170,6 +204,7 @@ class ProductTaskRuntime:
                 is_correction=False,
                 no_analysis=False,
                 generation_phase=phase,
+                max_output_tokens=max_output_tokens,
             )
         )
         return response.content
@@ -181,3 +216,28 @@ class ProductTaskRuntime:
         if not isinstance(value, dict):
             raise ValueError("Agent task output must be a JSON object")
         return value
+
+    @staticmethod
+    def _clip_personal_manual_text(payload: dict[str, Any]) -> None:
+        """Enforce public Contract budgets without weakening structure or evidence checks."""
+
+        limits = {
+            "name": 80,
+            "description": 600,
+            "title": 120,
+            "content": 1_200,
+        }
+        for collection_name in ("variables", "sections"):
+            collection = payload.get(collection_name)
+            if not isinstance(collection, list):
+                continue
+            for item in collection:
+                if not isinstance(item, dict):
+                    continue
+                for field, limit in limits.items():
+                    value = item.get(field)
+                    if isinstance(value, str):
+                        item[field] = value[:limit]
+        summary = payload.get("updateSummary")
+        if isinstance(summary, str):
+            payload["updateSummary"] = summary[:300]

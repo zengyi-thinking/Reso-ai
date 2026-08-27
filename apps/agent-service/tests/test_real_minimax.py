@@ -7,8 +7,11 @@ import pytest
 from reso_agent.contracts import (
     AgentMessageEvent,
     AnalyzeIncomingRequest,
+    JourneyEvidenceItem,
+    JourneyEvidenceSignal,
     LabSessionCreateRequest,
     LabTurnRequest,
+    PersonalManualGenerationRequest,
     PolishDraftRequest,
     SocialActRequestV1,
     SocialEvaluateRequestV1,
@@ -138,3 +141,54 @@ async def test_real_minimax_supports_assist_and_tea_party_contracts() -> None:
     assert evaluated.trace_id == trace_id
     assert "<think>" not in public_text
     assert "reasoning_details" not in public_text
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_REAL_MINIMAX") != "1",
+    reason="paid real-provider smoke is manual opt-in only",
+)
+@pytest.mark.asyncio
+async def test_real_minimax_generates_evidence_bound_personal_manual() -> None:
+    tasks = ProductTaskRuntime(create_real_provider_from_env())
+    trace_id = uuid4()
+    evidence = [
+        JourneyEvidenceItem(
+            evidence_ref=f"mountain-v1/q{index}/c{index}@{uuid4()}",
+            journey_version="mountain-v1",
+            stage_id=f"q{index}",
+            question_id=f"q{index}",
+            choice_id=f"c{index}",
+            option_text="服务端登记的 Journey 选择",
+            response_text=None,
+            target="self",
+            summary="在当前情境中表现出一种需要继续验证的偏好",
+            signals=[JourneyEvidenceSignal(dimension="support", value="observed", weight=1)],
+            context_tags=["manual-smoke"],
+            pressure="medium",
+            companion_mood=None,
+            elapsed_ms=100,
+            answered_at=datetime.now(UTC),
+        )
+        for index in range(7)
+    ]
+    candidate = await tasks.generate_personal_manual(
+        PersonalManualGenerationRequest(
+            request_id=uuid4(),
+            journey_id=uuid4(),
+            journey_version="mountain-v1",
+            evidence_snapshot_id=uuid4(),
+            evidence_signature="a" * 64,
+            evidence=evidence,
+            trace_id=trace_id,
+        )
+    )
+
+    allowed_refs = {item.evidence_ref for item in evidence}
+    assert candidate.trace_id == trace_id
+    assert len(candidate.variables) == 9
+    assert len(candidate.sections) == 5
+    assert all(set(item.evidence_refs) <= allowed_refs for item in candidate.variables)
+    assert all(set(item.evidence_refs) <= allowed_refs for item in candidate.sections)
+    serialized = candidate.model_dump_json().lower()
+    assert "<think>" not in serialized
+    assert "reasoning_details" not in serialized

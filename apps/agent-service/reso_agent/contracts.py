@@ -388,6 +388,119 @@ class PersonaVersion(ContractModel):
     created_at: datetime
 
 
+JourneyVersion = Literal["mountain-v1"]
+JourneyEvidenceTarget = Literal["self", "partner", "joint"]
+PersonalManualConfidence = Literal["low", "medium", "high"]
+PersonalManualVariableId = Literal[
+    "crisisInstinct",
+    "involuntaryReaction",
+    "incompatiblePattern",
+    "possibleMisreading",
+    "negativeFeeling",
+    "relationshipRedLine",
+    "repairAction",
+    "recoveryNeed",
+    "lifeVision",
+]
+PersonalManualSectionId = Literal[
+    "deepNeed",
+    "defense",
+    "incompatible",
+    "repair",
+    "vision",
+]
+
+
+class JourneyEvidenceSignal(ContractModel):
+    dimension: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=120)
+    weight: int = Field(ge=1, le=3)
+
+
+class JourneyEvidenceItem(ContractModel):
+    evidence_ref: str = Field(min_length=1, max_length=240)
+    journey_version: JourneyVersion
+    stage_id: str = Field(min_length=1, max_length=80)
+    question_id: str = Field(min_length=1, max_length=80)
+    choice_id: str = Field(min_length=1, max_length=80)
+    option_text: str = Field(min_length=1, max_length=600)
+    response_text: str | None = Field(default=None, min_length=1, max_length=1_000)
+    target: JourneyEvidenceTarget
+    summary: str = Field(min_length=1, max_length=600)
+    signals: list[JourneyEvidenceSignal] = Field(min_length=1, max_length=12)
+    context_tags: list[str] = Field(max_length=12)
+    pressure: Literal["low", "medium", "high"]
+    companion_mood: str | None = Field(default=None, min_length=1, max_length=80)
+    elapsed_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    answered_at: datetime
+
+
+class PersonalManualVariable(ContractModel):
+    id: PersonalManualVariableId
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=600)
+    confidence: PersonalManualConfidence
+    evidence_refs: list[str] = Field(min_length=1, max_length=12)
+
+
+class PersonalManualSection(ContractModel):
+    id: PersonalManualSectionId
+    title: str = Field(min_length=1, max_length=120)
+    content: str = Field(min_length=1, max_length=1_200)
+    confidence: PersonalManualConfidence
+    evidence_refs: list[str] = Field(min_length=1, max_length=24)
+
+
+_PERSONAL_MANUAL_VARIABLE_ORDER = [
+    "crisisInstinct",
+    "involuntaryReaction",
+    "incompatiblePattern",
+    "possibleMisreading",
+    "negativeFeeling",
+    "relationshipRedLine",
+    "repairAction",
+    "recoveryNeed",
+    "lifeVision",
+]
+_PERSONAL_MANUAL_SECTION_ORDER = [
+    "deepNeed",
+    "defense",
+    "incompatible",
+    "repair",
+    "vision",
+]
+
+
+class PersonalManualContent(ContractModel):
+    variables: list[PersonalManualVariable] = Field(min_length=9, max_length=9)
+    sections: list[PersonalManualSection] = Field(min_length=5, max_length=5)
+    update_summary: str = Field(min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def validate_order(self) -> Self:
+        if [item.id for item in self.variables] != _PERSONAL_MANUAL_VARIABLE_ORDER:
+            raise ValueError("Personal Manual variables are out of order")
+        if [item.id for item in self.sections] != _PERSONAL_MANUAL_SECTION_ORDER:
+            raise ValueError("Personal Manual sections are out of order")
+        return self
+
+
+class PersonalManualGenerationRequest(ContractModel):
+    request_id: UUID
+    journey_id: UUID
+    journey_version: JourneyVersion
+    evidence_snapshot_id: UUID
+    evidence_signature: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence: list[JourneyEvidenceItem] = Field(min_length=7, max_length=60)
+    trace_id: UUID
+
+
+class PersonalManualCandidate(PersonalManualContent):
+    trace_id: UUID
+    agent_version_id: UUID | None = None
+    model_version: str | None = Field(default=None, min_length=1, max_length=120)
+
+
 class ReplyRoute(ContractModel):
     id: str = Field(min_length=1, max_length=100)
     label: str = Field(min_length=1, max_length=100)

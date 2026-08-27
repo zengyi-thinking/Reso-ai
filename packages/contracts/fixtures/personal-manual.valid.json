@@ -1,0 +1,105 @@
+{
+  "variables": [
+    {
+      "id": "crisisInstinct",
+      "name": "行动起点",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "involuntaryReaction",
+      "name": "自然反应",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "incompatiblePattern",
+      "name": "谨慎模式",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "possibleMisreading",
+      "name": "可能误读",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "negativeFeeling",
+      "name": "冲突感受",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "relationshipRedLine",
+      "name": "重要边界",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "repairAction",
+      "name": "修复行动",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "recoveryNeed",
+      "name": "恢复需要",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "lifeVision",
+      "name": "人生方向",
+      "description": "当前证据中的可修正倾向。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    }
+  ],
+  "sections": [
+    {
+      "id": "deepNeed",
+      "title": "表层标签与深层关系需求",
+      "content": "基于当前证据的中性说明。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "defense",
+      "title": "极限压力下的防御本能",
+      "content": "基于当前证据的中性说明。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "incompatible",
+      "title": "冲突与需要避开的模式",
+      "content": "基于当前证据的中性说明。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "repair",
+      "title": "合适的冲突修复与支持蓝图",
+      "content": "基于当前证据的中性说明。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    },
+    {
+      "id": "vision",
+      "title": "人生愿景与关系方向",
+      "content": "基于当前证据的中性说明。",
+      "confidence": "medium",
+      "evidenceRefs": ["mountain-v1/invitation/planned@0198d4f3-2f34-7c52-95cc-7ff4f6f93a12"]
+    }
+  ],
+  "updateSummary": "根据 Journey Evidence 生成首版个人说明书。"
+}

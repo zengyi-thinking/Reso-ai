@@ -8,6 +8,7 @@ PostgreSQL + pgvector 保存正式事实和后续向量检索，Redis 用于简�
 
 - Identity：`users`、`agents`。
 - Journey：`journeys`、`journey_answers`。
+- Journey Evidence / Manual：`journey_evidence_snapshots`、`personal_manual_snapshots`、`personal_manual_edits`。
 - Persona：`persona_profiles`、`persona_versions`、`persona_patch_candidates`、`persona_evidence`。
 - Memory：`memories`、`memory_evidence`。
 - Conversation：`conversations`、`messages`。
@@ -43,6 +44,17 @@ Product API/Backend Worker 是正式表的唯一写入者。Agent Service 只接
 `0001_enable_extensions.sql` 启用 pgcrypto/vector；`0002_initial_schema.sql` 建立第一版结构；`0003_event_outbox.sql` 建立 committed event、消费幂等与 dead-letter 接缝。合并后只追加新 migration，禁止修改历史文件。
 
 `0004_post_connection_tea_party.sql` 增加真人 Connection、Assist、有限轮茶话会、Session、审计和限流结构，并复用 `0003_event_outbox.sql` 已建立的 committed event、消费幂等和 dead-letter 接缝。后续只追加新 migration，禁止修改历史文件。
+
+`0005_journey_personal_manual.sql` 增量扩展 Journey Answer（stage、自由回答、耗时、客户端幂等 ID、服务端 Evidence），新增不可变 Evidence Snapshot、Personal Manual 原始/当前内容、用户编辑历史以及 Manual→Persona V1/Agent 的唯一关联。匿名 token 只保存 SHA-256；`source_manual_snapshot_id` 防止同一说明书创建多个正式 Persona V1。
+
+Migration 会保留升级前已有的匿名 Journey，并为其写入不可逆、不可恢复的随机哈希以满足 fail-closed
+约束；由于旧 schema 从未有可交付给客户端的匿名凭据，这些 legacy 行不会被伪装成可认领资源。如需业务认领，必须由
+Backend 通过后续受审计的补偿流程处理。
+
+Journey、Personal Manual 和 Persona 是三个独立生命周期：答案完成后冻结 Evidence；Worker 只写入校验通过的 Candidate 作为 ready Manual；用户点击领取后，Product API 才在事务中创建正式 Persona Version 和 Agent。用户编辑只更新 `current_content_json` 并追加 `personal_manual_edits`，不会覆盖 `original_content_json` 或 Journey Evidence。
+
+`journeys_user_official_version_idx` 与 `journeys_anonymous_official_version_idx` 保证每个 owner/version
+最多一个正式 Journey；Backend 会自动把后续 Attempt 关联为 replay，不能由客户端自报 `official`。
 
 `pnpm test:database` 使用独立临时 Compose project 运行全部 migration、应用合成 seed、检查核心/outbox 表并验证 Redis 健康，结束后只删除该临时 project 的 volume。
 

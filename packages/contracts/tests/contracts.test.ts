@@ -18,6 +18,9 @@ import {
   SocialActRequestSchema,
   SocialActResponseSchema,
   TeaPartyResponseSchema,
+  JourneyAnswerInputSchema,
+  JourneyCompletedEventSchema,
+  PersonalManualContentSchema,
 } from "../src/index.js";
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
@@ -298,5 +301,74 @@ describe("Reso.AI contracts", () => {
         retryable: true,
       }).retryable,
     ).toBe(true);
+  });
+
+  it("accepts the valid Personal Manual fixture and rejects the invalid fixture", () => {
+    const valid = JSON.parse(
+      readFileSync(`${fixtureDirectory}/personal-manual.valid.json`, "utf8"),
+    );
+    const invalid = JSON.parse(
+      readFileSync(`${fixtureDirectory}/personal-manual.invalid.json`, "utf8"),
+    );
+    expect(PersonalManualContentSchema.safeParse(valid).success).toBe(true);
+    expect(PersonalManualContentSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("allows only raw Journey answer fields from the browser", () => {
+    const raw = {
+      stageId: "fatigue",
+      questionId: "fatigue",
+      choiceId: "empathize",
+      elapsedMs: 1200,
+      clientAnswerId: id,
+    };
+    expect(JourneyAnswerInputSchema.safeParse(raw).success).toBe(true);
+    expect(
+      JourneyAnswerInputSchema.safeParse({
+        ...raw,
+        summary: "browser supplied conclusion",
+        confidence: 1,
+        official: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      JourneyAnswerInputSchema.safeParse({
+        ...raw,
+        choiceId: "free-response",
+        responseText: "我会先让彼此停下来确认安全。",
+      }).success,
+    ).toBe(true);
+    expect(
+      JourneyAnswerInputSchema.safeParse({
+        ...raw,
+        choiceId: "free-response",
+        responseText: "过".repeat(1_001),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("binds a Journey completed payload to the event subject", () => {
+    const event = {
+      id,
+      type: "journey.completed",
+      version: 1,
+      occurredAt: "2026-08-27T08:00:00+08:00",
+      producer: "reso-api",
+      correlationId: id,
+      causationId: null,
+      subjectId: id,
+      payload: {
+        journeyId: id,
+        evidenceSnapshotId: id,
+        personalManualSnapshotId: id,
+      },
+    };
+    expect(JourneyCompletedEventSchema.safeParse(event).success).toBe(true);
+    expect(
+      JourneyCompletedEventSchema.safeParse({
+        ...event,
+        payload: { ...event.payload, journeyId: "0198d4f3-2f34-7c52-95cc-7ff4f6f93a13" },
+      }).success,
+    ).toBe(false);
   });
 });

@@ -189,6 +189,16 @@ export class InMemoryProductRepository implements ProductRepository {
         this.outbox.set(key, { ...event, attempts: (event.attempts ?? 0) + 1 });
     }
   }
+  async deadLetterOutboxEvent(
+    eventId: string,
+    _workerId: string,
+    _expectedAttempt: number,
+    _errorCode: string,
+  ): Promise<void> {
+    for (const [key, event] of this.outbox) {
+      if (event.id === eventId) this.outbox.set(key, { ...event, attempts: 5 });
+    }
+  }
   async resolveSession(_tokenHash: string): Promise<string | null> {
     const session = this.sessions.get(_tokenHash);
     return session !== undefined && !session.revoked && new Date(session.expiresAt) > new Date()
