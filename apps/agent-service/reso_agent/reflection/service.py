@@ -11,6 +11,7 @@ from reso_agent.contracts import (
     RetrievedMemory,
 )
 from reso_agent.pattern.detector import PatternDetector
+from reso_agent.runtime.language import fragment_summary, quote_terms
 
 
 @dataclass(frozen=True)
@@ -38,25 +39,16 @@ class ReflectionService:
         request: AgentTurnRequest,
         is_correction: bool,
         retrieved: tuple[RetrievedMemory, ...],
+        model_memory: MemoryCandidate | None = None,
     ) -> ReflectionResult:
-        memory_type = MemoryType.CORRECTION if is_correction else MemoryType.EPISODIC
-        memory = MemoryCandidate(
-            type=memory_type,
-            summary=(
-                "用户明确纠正：并非普遍慢热，而是排斥无意义社交。"
-                if is_correction
-                else self._episodic_summary(request.message)
-            ),
-            evidence_message_ids=[request.request_id],
-            confidence=0.96 if is_correction else 0.72,
-            requires_review=is_correction,
-        )
+        memory = self._memory_candidate(request, is_correction, model_memory)
 
         patches: tuple[PersonaPatchCandidate, ...] = ()
         persona = request.context.persona if request.context else None
         patterns = self._pattern_detector.detect([item.memory for item in retrieved])
         if is_correction and persona is not None:
             corrected_reading = self._corrected_reading(retrieved)
+            correction_fragment = fragment_summary(request.message, cap=40) or "见本轮原话"
             patches = (
                 PersonaPatchCandidate(
                     id=uuid4(),
@@ -64,10 +56,7 @@ class ReflectionService:
                     from_version_id=persona.version_id,
                     path="/confirmedPatterns/socialRhythm",
                     old_value=corrected_reading,
-                    proposed_value=(
-                        "用户并非普遍慢热；更在意互动是否有真实内容，"
-                        "面对真正感兴趣的人可以很快进入深度交流。"
-                    ),
+                    proposed_value=f"以用户本轮的纠正为准：{correction_fragment}",
                     reason="用户明确纠正旧解释；显式 correction 可作为单条强证据。",
                     evidence_ids=[request.request_id],
                     confidence=0.86,
@@ -101,29 +90,35 @@ class ReflectionService:
 
         relationships: tuple[RelationshipUpdateCandidate, ...] = ()
         if any(marker in request.message for marker in ("关系", "朋友", "她", "他")):
+            anchor = quote_terms(request.message, limit=1)
             relationships = (
                 RelationshipUpdateCandidate(
-                    summary="本轮包含关系相关经历，等待 Product API 审查。",
+                    summary=f"关系话题（{anchor}）：{fragment_summary(request.message, cap=30)}",
                     reason="relationship topic detected; no formal state mutation",
                     confidence=0.58,
                 ),
             )
         return ReflectionResult((memory,), patches, relationships)
 
-    def _episodic_summary(self, message: str) -> str:
-        if any(marker in message for marker in ("累", "疲惫", "没劲")):
-            return "用户今天感到疲惫，希望减少额外负担。"
-        if any(marker in message for marker in ("开心", "完成", "进展")):
-            return "用户分享了一个让自己开心或有进展的经历。"
-        if any(marker in message for marker in ("怎么说", "怎么回复", "不知道怎么")):
-            return "用户希望先整理自己的真实表达。"
-        return "用户分享了一段当前经历。"
-
-    def _has_multiple_consistent_evidence(self, retrieved: tuple[RetrievedMemory, ...]) -> bool:
-        relevant = [
-            item
-            for item in retrieved
-            if item.memory.type in {MemoryType.PERSONA_RELATED, MemoryType.REFLECTION}
-            and item.score.semantic >= 0.08
-        ]
-        return len(relevant) >= 2
+    def _memory_candidate(
+        self,
+        request: AgentTurnRequest,
+        is_correction: bool,
+        model_memory: MemoryCandidate | None,
+    ) -> MemoryCandidate:
+        if model_memory is not None:
+            return MemoryCandidate(
+                type=model_memory.type,
+                summary=model_memory.summary,
+                evidence_message_ids=[request.request_id],
+                confidence=model_memory.confidence,
+                requires_review=is_correction,
+            )
+        summary = fragment_summary(request.message) or request.message.strip()[:40]
+        return MemoryCandidate(
+            type=MemoryType.CORRECTION if is_correction else MemoryType.EPISODIC,
+            summary=summary,
+            evidence_message_ids=[request.request_id],
+            confidence=0.96 if is_correction else 0.72,
+            requires_review=is_correction,
+        )

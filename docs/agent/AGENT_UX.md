@@ -25,23 +25,35 @@ Reso 的等待体验不是“AI 正在生成”，而是“Reso 正在理解我�
 ## Event semantics
 
 ```json
-{ "type": "status", "phase": "recalling", "text": "想起了一件和你有关的事…" }
-{ "type": "public_reflection", "text": "你之前提到过……", "evidenceRefs": ["memory:0"] }
+{ "type": "status", "phase": "recalling", "text": "想起 8月27日 你说的「打翻了咖啡杯」…" }
+{ "type": "public_reflection", "text": "「打翻了咖啡杯」在 8月27日 也出现过，和这次说的可能有关——先当参考，不当结论。", "evidenceRefs": ["memory:0"] }
 { "type": "message", "position": "final", "text": "所以这次我更建议……" }
 ```
 
-状态文案来自受控文案库；同一 phase 有多个变体，按消息内容的稳定哈希确定性轮换，避免每轮同一句话的机械感。模型永远不能生成 status 文本。公开反思必须引用本轮 allowlist evidence；引用无效、越权或被 Correction 覆盖时直接丢弃。兼容字段 `message` 始终是最终立场。
+状态文案由 Runtime 生成，且必须锚定真实内容：从消息与检索结果中抽取内容锚点（`reso_agent/runtime/language.py` 的 content runs，如「团子」「咖啡杯碰倒」），拼出“先接住你说的「…」”“翻到 N 条记忆，最近是 X月X日 的「…」”一类动态文案。固定文案库只作为抽不出锚点时的兜底。模型永远不能生成 status 文本。公开反思必须引用本轮 allowlist evidence；引用无效、越权或被 Correction 覆盖时直接丢弃；反思引用记忆时只做引用+保留不确定性（“先当参考，不当结论”），不复述记忆原文。兼容字段 `message` 始终是最终立场。
 
 Agent Lab 会把 `evidenceRefs` 里的 `memory:N` 解析为本轮真实检索到的 Memory，渲染成证据小卡（类型、摘要、检索分）；Correction 记忆显示为“已纠正”。这让“想起了一件事”可以被点击核实，而不是黑箱抒情。
 
+## 公开思考行（Codex 式渐进思考）
+
+模型在输出 JSON 之前先写 1–3 行以 `>` 开头的公开思考行（每行 ≤ 22 字），描述此刻真实在做的步骤（翻到哪条记忆、在对比什么、注意到什么），必须引用真实上下文内容。MiniMax provider 以真流式（Anthropic SSE `text_delta`）转发这些行，Runtime 把它们实时转成 `composing` 状态事件推给前端——用户在模型仍在写作时就能看到思考行逐条更新（“听到团子闯祸的小插曲”→“想轻轻接住这个日常瞬间”），随后消息再流式输出。
+
+约束：
+
+- 思考行是设计的公开表达，不是 Chain-of-Thought；`thinking_delta`、`<think>` 等 provider 推理一律不转发、不入 trace。
+- 思考行只做 live 展示与 `LabTurn.thinkingSteps` 持久化（≤ 5 条、每条 ≤ 40 字），不进入 `publicEvents`，不占用呼吸预算。
+- 若模型把思考行嵌进 JSON（`thinkingLines` 字段）而非 JSON 前缀，Runtime 会恢复它们用于 trace 与回放，只是失去实时性。
+- direct 节奏若没有持久化状态，Runtime 会在生成前发出一条 live-only 的 `composing` 状态（内容锚点动态生成），保证用户永远不会盯着静止的对话。
+
 ## 文案与频率
 
-- 状态短、克制，不使用 “Thinking…” 或工程术语。
-- 回忆状态必须落在真实检索结果上：条数（“找到 2 条和你有关的记忆…”）、日期（“翻到你 8 月 12 日说的事…”）或纠正标记（“翻到你 8 月 12 日 纠正过我的一次…”）都来自本轮 retrieval 事实。
+- 状态短、克制，不使用 “Thinking…” 或工程术语；文案锚定消息/记忆的真实内容锚点，固定文案只做兜底。
+- 回忆状态必须落在真实检索结果上：条数（“翻到 2 条记忆，最近是 8月27日 的「咖啡杯碰倒」…”）、日期或纠正标记都来自本轮 retrieval 事实；检索为空时如实说“翻了翻记忆，还没找到和「…」直接相关的…”。
 - 弱证据使用“我猜”“可能”“不太确定”“会不会”等表达。
-- 每轮最多两个状态、一条公开反思、两段消息。
+- 每轮最多两个状态、一条公开反思、两段消息（公开思考行不占此预算）。
 - 改口只能澄清或修正当前立场，不能为了显得像人而故意先说错。
-- “晚上吃什么”一类低风险问题禁止调用复杂节奏；direct 轮次默认不显示任何思考痕迹，仅偶发（按 turn id 稳定哈希）出现“这一轮它决定不多想”的克制注记。
+- “晚上吃什么”一类低风险问题禁止调用复杂节奏；direct 轮次仅一条 live-only composing 状态加公开思考行，不持久化思考痕迹，仅偶发（按 turn id 稳定哈希）出现“这一轮它决定不多想”的克制注记。
+- 每轮 Memory 由模型在同一次输出里写下自己的观察（保留具体细节与情绪底色，禁止复述用户原话与“用户分享了经历”类模板）；解析侧拒绝模板与逐字复述，兜底为确定性 fragment 提取。
 
 ## 思考链的折叠与回放
 
@@ -58,7 +70,7 @@ SSE 通道在完整 `message` 事件前先按 12 字符分块发送 `message_del
 - **写入**：每轮结束后显示“这一轮它记住了”，列出 memoryWrites（类型、摘要、是否待确认）；Correction 高亮为“已纠正”。
 - **检索**：`recalling` 状态带真实条数/日期；Memory 面板按日期分组展示记忆时间线，并统计每条记忆“被想起 N 次”。
 - **引用**：公开反思的证据小卡展示真实检索分、发生日期与类型；引用无效即丢弃。
-- **底层能力条**：Turn Inspector 顶部展示本轮参与的工程能力（Prompt 版本、Context 切片数、Memory 检索/引用/写入计数、Trace、Safety、Tools），对应设计稿的“底层工程能力”卡。
+- **底层能力条**：Turn Inspector 顶部展示本轮参与的工程能力（Prompt 版本、Context 切片数、Memory 检索/引用/写入计数、Thinking 流式思考行数、Trace、Safety），并单列 Thinking steps 时间线，对应设计稿的“底层工程能力”卡。
 
 ## Privacy
 

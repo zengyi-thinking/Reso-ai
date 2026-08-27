@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -15,6 +16,11 @@ from reso_agent.contracts import AgentMode, ModelMetadata, RecentMessage
 
 class ModelProviderError(RuntimeError):
     """A configured real provider failed. Callers must not silently fall back."""
+
+
+# Receives public text deltas as they stream in. Providers must never forward
+# provider-side reasoning/thinking deltas through this callback.
+OnTextDelta = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -44,7 +50,9 @@ class ModelResponse:
 class ModelProvider(Protocol):
     name: str
 
-    async def generate(self, request: ModelRequest) -> ModelResponse: ...
+    async def generate(
+        self, request: ModelRequest, on_text: OnTextDelta | None = None
+    ) -> ModelResponse: ...
 
 
 def _first_env(*names: str) -> str:
@@ -81,7 +89,9 @@ class DeterministicModelProvider:
     name = "deterministic"
     model = "reso-relational-v1"
 
-    async def generate(self, request: ModelRequest) -> ModelResponse:
+    async def generate(
+        self, request: ModelRequest, on_text: OnTextDelta | None = None
+    ) -> ModelResponse:
         if request.generation_phase == "assist_analyze":
             content = json.dumps(
                 {
@@ -227,11 +237,13 @@ class MiniMaxModelProvider:
     def __init__(self, config: ProviderConfig) -> None:
         self._config = config
 
-    async def generate(self, request: ModelRequest) -> ModelResponse:
+    async def generate(
+        self, request: ModelRequest, on_text: OnTextDelta | None = None
+    ) -> ModelResponse:
         started = monotonic()
         try:
             if "/anthropic" in self._config.base_url:
-                content, prompt_tokens, completion_tokens = await self._anthropic(request)
+                content, prompt_tokens, completion_tokens = await self._anthropic(request, on_text)
             else:
                 content, prompt_tokens, completion_tokens = await self._openai(request)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
@@ -289,8 +301,12 @@ class MiniMaxModelProvider:
         usage = payload.get("usage") or {}
         return content, usage.get("prompt_tokens"), usage.get("completion_tokens")
 
-    async def _anthropic(self, request: ModelRequest) -> tuple[str, int | None, int | None]:
+    async def _anthropic(
+        self, request: ModelRequest, on_text: OnTextDelta | None = None
+    ) -> tuple[str, int | None, int | None]:
         url = f"{self._config.base_url}/v1/messages"
+        if on_text is not None:
+            return await self._anthropic_stream(url, request, on_text)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             response = await client.post(
                 url,
@@ -311,6 +327,58 @@ class MiniMaxModelProvider:
         )
         usage = payload.get("usage") or {}
         return content, usage.get("input_tokens"), usage.get("output_tokens")
+
+    async def _anthropic_stream(
+        self, url: str, request: ModelRequest, on_text: OnTextDelta
+    ) -> tuple[str, int | None, int | None]:
+        """Stream the response so designed public thinking lines reach the
+        runtime while the model is still writing.
+
+        Only `text_delta` blocks are forwarded; provider reasoning deltas are
+        discarded and never leave this process.
+        """
+        chunks: list[str] = []
+        prompt_tokens: int | None = None
+        completion_tokens: int | None = None
+        async with (
+            httpx.AsyncClient(timeout=self._config.timeout_seconds) as client,
+            client.stream(
+                "POST",
+                url,
+                headers={"x-api-key": self._config.api_key, "anthropic-version": "2023-06-01"},
+                json={
+                    "model": self._config.model,
+                    "system": request.system_prompt,
+                    "messages": self._messages(request),
+                    "temperature": 0.7,
+                    "max_tokens": 700,
+                    "stream": True,
+                },
+            ) as response,
+        ):
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    event = json.loads(line[5:].strip())
+                except json.JSONDecodeError:
+                    continue
+                event_type = event.get("type")
+                if event_type == "content_block_delta":
+                    delta = event.get("delta") or {}
+                    if delta.get("type") == "text_delta":
+                        text = str(delta.get("text") or "")
+                        if text:
+                            chunks.append(text)
+                            on_text(text)
+                elif event_type == "message_start":
+                    usage = (event.get("message") or {}).get("usage") or {}
+                    prompt_tokens = usage.get("input_tokens", prompt_tokens)
+                elif event_type == "message_delta":
+                    usage = event.get("usage") or {}
+                    completion_tokens = usage.get("output_tokens", completion_tokens)
+        return "".join(chunks), prompt_tokens, completion_tokens
 
 
 def create_real_provider_from_env() -> MiniMaxModelProvider:

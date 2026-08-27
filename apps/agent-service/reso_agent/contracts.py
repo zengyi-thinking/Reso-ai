@@ -342,6 +342,8 @@ class LabTurn(ContractModel):
     model: ModelMetadata
     memory_candidate_ids: list[UUID]
     memory_writes: list[LabMemoryWrite] = Field(default_factory=list)
+    # Designed public thinking lines the model streamed before its JSON payload.
+    thinking_steps: list[str] = Field(default_factory=list)
     persona_patch_candidates: list[PersonaPatchCandidate]
     relationship_candidates: list[RelationshipUpdateCandidate]
     cadence: ConversationCadence

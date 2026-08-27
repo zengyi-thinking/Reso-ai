@@ -186,6 +186,7 @@ describe("Reso.AI contracts", () => {
           requiresReview: true,
         },
       ],
+      thinkingSteps: ["翻到无意义社交那条记忆", "在核对这次的纠正"],
       personaPatchCandidates: [],
       relationshipCandidates: [],
       cadence: "direct",
@@ -196,6 +197,7 @@ describe("Reso.AI contracts", () => {
     });
     expect(turn.success).toBe(true);
     expect(turn.success && turn.data.memoryWrites[0].type).toBe("correction");
+    expect(turn.success && turn.data.thinkingSteps).toHaveLength(2);
   });
 
   it("rejects public output without a final position or with invalid evidence", () => {

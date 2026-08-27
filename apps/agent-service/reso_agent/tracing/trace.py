@@ -33,5 +33,7 @@ class TraceRecord(BaseModel):
     persona_candidate_count: int = Field(ge=0)
     cadence: ConversationCadence = ConversationCadence.DIRECT
     fact_separation_verified: bool = True
+    # Designed public thinking lines only; provider reasoning never reaches here.
+    thinking_steps: tuple[str, ...] = ()
     public_event_types: tuple[str, ...] = ()
     public_evidence_refs: tuple[str, ...] = ()

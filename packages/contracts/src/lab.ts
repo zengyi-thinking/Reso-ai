@@ -61,6 +61,7 @@ export const LabTurnSchema = z.object({
       }),
     )
     .default([]),
+  thinkingSteps: z.array(z.string()).default([]),
   personaPatchCandidates: z.array(PersonaPatchCandidateSchema),
   relationshipCandidates: z.array(
     z.object({ summary: z.string(), reason: z.string(), confidence: z.number() }),
@@ -78,7 +79,7 @@ export type LabTurn = z.infer<typeof LabTurnSchema>;
 export const LabSessionSchema = z.object({
   id: UuidSchema,
   user: LabUserSchema,
-  provider: z.enum(["deterministic", "real"]),
+  provider: z.string().min(1),
   createdAt: IsoDateTimeSchema,
   persona: z.object({ version: z.string(), content: PersonaContentSchema }),
   pendingPatches: z.array(PersonaPatchCandidateSchema),

@@ -491,10 +491,18 @@ function thinkingSummary(turn: LabTurn): string {
 function ThinkingTrace({ turn }: { turn: LabTurn }): React.JSX.Element | null {
   const [expanded, setExpanded] = useState(false);
   const [replaying, setReplaying] = useState(false);
-  const steps = turn.publicEvents.filter(
-    (event) =>
-      event.type === "status" || event.type === "public_reflection" || event.type === "message",
-  );
+  const thinkingSteps: AgentPublicEvent[] = turn.thinkingSteps.map((text) => ({
+    type: "status" as const,
+    phase: "composing" as const,
+    text,
+  }));
+  const steps = [
+    ...thinkingSteps,
+    ...turn.publicEvents.filter(
+      (event) =>
+        event.type === "status" || event.type === "public_reflection" || event.type === "message",
+    ),
+  ];
   const hasTrace = steps.some(
     (event) => event.type !== "message" || event.position === "tentative",
   );
@@ -653,7 +661,7 @@ function PendingTurnView({
         <div className="agent-sequence">
           {pending.events.length === 0 && !pending.streaming && !pending.error ? (
             <PublicEventView
-              event={{ type: "status", phase: "understanding", text: "正在想想这件事…" }}
+              event={{ type: "status", phase: "understanding", text: "在听你说…" }}
             />
           ) : null}
           {pending.events.map((event, index) => (
@@ -763,9 +771,9 @@ function TurnInspector({ turn }: { turn: LabTurn | undefined }): React.JSX.Eleme
       label: "Memory",
       value: `检索 ${turn.retrievedMemories.length} · 引用 ${citedCount} · 写入 ${turn.memoryWrites.length}`,
     },
+    { label: "Thinking", value: `${turn.thinkingSteps.length} 条公开思考` },
     { label: "Trace", value: "allowlist ✓" },
     { label: "Safety", value: turn.mode === "proxy" ? "consent gate" : "bounded modes" },
-    { label: "Tools", value: "0" },
   ];
   return (
     <div className="panel-scroll">
@@ -778,7 +786,21 @@ function TurnInspector({ turn }: { turn: LabTurn | undefined }): React.JSX.Eleme
             </span>
           ))}
         </div>
-        <small>Prompt / Context / Memory Retrieval / Tool Calling / Trace·Eval / Safety</small>
+        <small>Prompt / Context / Memory Retrieval / Thinking Stream / Trace·Eval / Safety</small>
+      </Inspect>
+      <Inspect title="Thinking steps">
+        {turn.thinkingSteps.length === 0 ? (
+          <p className="muted">这一轮模型没有输出公开思考行。</p>
+        ) : (
+          <ol className="thinking-steps">
+            {turn.thinkingSteps.map((step, index) => (
+              <li key={`${index}-${step}`}>
+                <span className="step-dot" aria-hidden="true" />
+                {step}
+              </li>
+            ))}
+          </ol>
+        )}
       </Inspect>
       <Inspect title="Breathing output">
         <Code value={{ cadence: turn.cadence, events: turn.publicEvents }} />

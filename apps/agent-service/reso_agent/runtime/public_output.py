@@ -12,6 +12,8 @@ from reso_agent.contracts import (
     AgentPublicOutput,
     AgentPublicReflectionEvent,
     ConversationCadence,
+    MemoryCandidate,
+    MemoryType,
 )
 from reso_agent.runtime.cadence import CadenceDecision, ConversationCadencePolicy
 
@@ -37,6 +39,15 @@ def public_output_contract(decision: CadenceDecision, context: BuiltContext) -> 
         {
             "cadence": decision.cadence.value,
             "allowedEvidence": evidence,
+            "memory": {
+                "type": "episodic|persona_related|relationship|correction",
+                "summary": (
+                    "用你自己的观察记下这轮值得记住的事：保留关键细节"
+                    "（对象、事件、情绪底色），写成你的理解而不是复述或改写"
+                    "用户原话；禁止'用户分享了经历'一类空泛模板，≤60字"
+                ),
+                "confidence": 0.8,
+            },
             "output": {
                 "events": [
                     {
@@ -57,8 +68,92 @@ def public_output_contract(decision: CadenceDecision, context: BuiltContext) -> 
     )
 
 
+_MEMORY_TYPES = {"episodic", "persona_related", "relationship", "correction", "reflection"}
+_THINKING_LINE_LIMIT = 3
+_THINKING_TEXT_CAP = 40
+
+
+def split_thinking(content: str) -> tuple[list[str], str]:
+    """Split model output into public thinking lines ("> …") and the JSON payload.
+
+    Thinking lines are designed public process notes the model writes before the
+    JSON object; they are streamed live, never contain hidden reasoning, and are
+    dropped from the payload before parsing. Stray non-marker lines before the
+    JSON are ignored rather than glued into the payload.
+    """
+    lines: list[str] = []
+    payload_lines: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if payload_lines:
+            # A stray "> …" line after the JSON began never joins the payload.
+            if not stripped.startswith(">"):
+                payload_lines.append(line)
+            continue
+        if stripped.startswith(">"):
+            text = stripped.lstrip(">").strip()
+            if text and len(lines) < _THINKING_LINE_LIMIT:
+                lines.append(text[:_THINKING_TEXT_CAP])
+            continue
+        if stripped.startswith("{") or stripped.startswith("```"):
+            payload_lines.append(line)
+    if not payload_lines:
+        return lines, content.strip()
+    return lines, "\n".join(payload_lines).strip()
+
+
+def parse_memory_candidate(
+    *, raw: str, is_correction: bool, message: str = ""
+) -> MemoryCandidate | None:
+    """Extract the model-written memory for this turn from the same JSON payload.
+
+    The model records its own observation of what happened, so stored memories
+    stay specific without parroting the user. A summary that merely restates the
+    message is rejected and falls back to the deterministic extractor.
+    """
+    candidate = _json_object(raw)
+    if not isinstance(candidate, dict):
+        return None
+    raw_memory = candidate.get("memory")
+    if not isinstance(raw_memory, dict):
+        return None
+    summary = str(raw_memory.get("summary") or "").strip()
+    if not summary or len(summary) > 120 or summary.startswith("用户分享"):
+        return None
+    if message and _restates(summary, message):
+        return None
+    memory_type = str(raw_memory.get("type") or "").strip()
+    if memory_type not in _MEMORY_TYPES:
+        memory_type = "episodic"
+    if is_correction:
+        memory_type = "correction"
+    try:
+        confidence = max(0.0, min(1.0, float(raw_memory.get("confidence", 0.7))))
+    except (TypeError, ValueError):
+        confidence = 0.7
+    return MemoryCandidate(
+        type=MemoryType(memory_type),
+        summary=summary,
+        evidence_message_ids=[],
+        confidence=confidence,
+        requires_review=is_correction,
+    )
+
+
+_PUNCTUATION = re.compile(r"[\s，。！？；：、,.!?;:'\"（）()「」…\-—]+")
+
+
+def _restates(summary: str, message: str) -> bool:
+    """True when the summary is essentially the message repeated back."""
+    compact = _PUNCTUATION.sub("", summary)
+    source = _PUNCTUATION.sub("", message)
+    if len(compact) < 8 or len(source) < 8:
+        return False
+    return compact in source or source in compact
+
+
 def parse_public_output(
-    *, raw: str, decision: CadenceDecision, context: BuiltContext
+    *, raw: str, decision: CadenceDecision, context: BuiltContext, message: str = ""
 ) -> AgentPublicOutput:
     allowed_refs = {"message:current"}
     allowed_refs.update(
@@ -74,7 +169,12 @@ def parse_public_output(
     events: list[AgentPublicEvent] = []
     if candidate is not None:
         try:
-            raw_events = candidate.get("events", [])
+            # Models either return a bare {events:[...]} or echo the contract
+            # template with events nested under "output"; accept both shapes.
+            raw_events = candidate.get("events")
+            if not isinstance(raw_events, list):
+                nested = candidate.get("output")
+                raw_events = nested.get("events", []) if isinstance(nested, dict) else []
             if not isinstance(raw_events, list):
                 raw_events = []
             for raw_event in raw_events:
@@ -102,7 +202,9 @@ def parse_public_output(
         (event for event in events if isinstance(event, AgentPublicReflectionEvent)), None
     )
     if reflection is None:
-        reflection = ConversationCadencePolicy().safe_reflection(decision=decision, context=context)
+        reflection = ConversationCadencePolicy().safe_reflection(
+            decision=decision, context=context, message=message
+        )
 
     messages = [event for event in events if isinstance(event, AgentMessageEvent)][:2]
     if decision.cadence in {ConversationCadence.DIRECT, ConversationCadence.CONSIDERED}:
@@ -110,15 +212,6 @@ def parse_public_output(
         reflection = None
     elif decision.cadence is ConversationCadence.REFLECTIVE:
         messages = [messages[-1]]
-    elif not any(message.position == "tentative" for message in messages):
-        messages.insert(
-            0,
-            AgentMessageEvent(
-                position="tentative",
-                text="我第一反应是想先给你一个明确答案，但这件事好像还不能只看一面。",
-            ),
-        )
-        messages = messages[:2]
 
     if (
         reflection
@@ -153,13 +246,16 @@ def assemble_reconsidered(
     context: BuiltContext,
     draft_text: str,
     final_text: str,
+    message: str = "",
 ) -> AgentPublicOutput:
     """Assemble the public sequence for a genuine two-pass re-consideration.
 
     The tentative message and the final message come from two separate model
     calls, so the visible "let me think again" reflects real re-examination.
     """
-    reflection = ConversationCadencePolicy().safe_reflection(decision=decision, context=context)
+    reflection = ConversationCadencePolicy().safe_reflection(
+        decision=decision, context=context, message=message
+    )
     statuses = list(decision.status_events)
     events: list[AgentPublicEvent] = []
     if statuses:
@@ -187,8 +283,50 @@ def _json_object(raw: str) -> dict[str, object] | None:
     try:
         value = json.loads(text)
     except json.JSONDecodeError:
-        return None
+        # Models sometimes append prose after a fenced JSON block; fall back to
+        # the outermost brace span so one trailing sentence cannot sink the turn.
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        try:
+            value = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
     return value if isinstance(value, dict) else None
+
+
+def thinking_lines_from_payload(raw: str) -> list[str]:
+    """Recover thinking lines the model nested inside the JSON payload.
+
+    The contract asks for "> …" lines before the JSON so they stream live, but
+    models often nest them as a `thinkingLines` array instead. Recovered lines
+    are persisted for the trace and replay even though they did not stream.
+    """
+    candidate = _json_object(raw)
+    if not isinstance(candidate, dict):
+        return []
+    nested_output = candidate.get("output")
+    sources = [candidate, nested_output if isinstance(nested_output, dict) else {}]
+    nested: object = None
+    for source in sources:
+        for key in ("thinkingLines", "thinking_lines"):
+            value = source.get(key)
+            if isinstance(value, list) and value:
+                nested = value
+                break
+        if nested is not None:
+            break
+    if not isinstance(nested, list):
+        return []
+    lines: list[str] = []
+    for item in nested:
+        text = str(item).strip().lstrip(">").strip()
+        if text:
+            lines.append(text[:_THINKING_TEXT_CAP])
+        if len(lines) >= _THINKING_LINE_LIMIT:
+            break
+    return lines
 
 
 def _fallback_text(raw: str) -> str:

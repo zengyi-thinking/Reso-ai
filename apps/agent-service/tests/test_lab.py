@@ -152,7 +152,7 @@ def test_lab_stream_emits_deltas_memory_writes_and_grounded_recall() -> None:
     assert response.status_code == 200
     assert '"type":"message_delta"' in body
     # The recall status is grounded in what retrieval actually found.
-    assert ("翻到你" in body) or ("找到" in body)
+    assert ("翻到" in body) or ("找到" in body) or ("想起" in body)
     updated = client.get(f"/v1/lab/sessions/{session_id}").json()
     turn = updated["turns"][0]
     assert turn["memoryWrites"], "lab turn should expose what it remembered"

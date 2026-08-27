@@ -160,6 +160,7 @@ class LabWorkspace:
             model=details.model,
             memory_candidate_ids=memory_ids,
             memory_writes=memory_writes,
+            thinking_steps=list(details.thinking_steps),
             persona_patch_candidates=details.response.persona_patch_candidates,
             relationship_candidates=details.response.relationship_candidates,
             cadence=details.response.cadence,

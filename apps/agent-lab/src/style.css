@@ -684,6 +684,28 @@ small,
   list-style: none;
 }
 
+.thinking-steps {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thinking-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #5d5a75;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.thinking-steps .step-dot {
+  flex: none;
+  align-self: center;
+}
+
 .trace-step {
   position: relative;
   display: flex;

@@ -114,7 +114,7 @@ async def test_reconsidered_retry_repairs_bare_conclusion() -> None:
         name = "bare-then-separating"
         calls: ClassVar[list[str]] = []
 
-        async def generate(self, request: ModelRequest) -> ModelResponse:
+        async def generate(self, request: ModelRequest, on_text=None) -> ModelResponse:
             from reso_agent.contracts import ModelMetadata
 
             self.calls.append(request.generation_phase)

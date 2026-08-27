@@ -13,6 +13,7 @@ from reso_agent.contracts import (
     ConversationCadence,
     MemoryType,
 )
+from reso_agent.runtime.language import quote_terms
 from reso_agent.runtime.mode_router import ModeSelection, TurnPerception
 
 PUBLIC_RECALL_MIN_SCORE = 0.45
@@ -21,37 +22,45 @@ _RELATIONSHIP_MARKERS = ("关系", "朋友", "她", "他", "喜欢", "冷淡", "
 _LOW_STAKES_MARKERS = ("吃什么", "喝什么", "天气", "晚安", "早安", "在吗", "哈哈")
 _MEMORY_REQUEST_MARKERS = ("记得", "之前说过", "以前提过")
 
-# Runtime-owned status copy library. The model never authors status text; the
-# variants keep the rhythm alive without turning deliberation into a performance.
+# Last-resort variants for messages with no extractable content anchor; every
+# other status line is derived from the actual message or retrieved memory.
 _STATUS_LIBRARY: dict[AgentStatusPhase, tuple[str, ...]] = {
     AgentStatusPhase.UNDERSTANDING: (
-        "我想先把这件事放慢一点看看…",
-        "正在想想这件事…",
-        "我先听懂你在说什么…",
+        "想把这句话听完整…",
+        "在听，让我贴着它一会儿…",
     ),
-    AgentStatusPhase.RECALLING: (
-        "想起了一件和你有关的事…",
-        "等等，我好像记得这个…",
-        "让我翻一下之前的记忆…",
-    ),
-    AgentStatusPhase.NOTICING: (
-        "我好像注意到了一个小变化…",
-        "有个细节让我停了一下…",
-        "这里有个东西轻轻响了一下…",
-    ),
-    AgentStatusPhase.COMPOSING: ("我在想怎么跟你说比较好…",),
-    AgentStatusPhase.RECONSIDERING: (
-        "等等，我再换一个角度看看。",
-        "……我再想一下，刚才那个说法可能太快了。",
-        "慢一点，我想再核对一次。",
-    ),
+    AgentStatusPhase.RECALLING: ("翻了一下记忆…",),
+    AgentStatusPhase.NOTICING: ("有个地方让我停了一下…",),
+    AgentStatusPhase.COMPOSING: ("在心里组织怎么回…",),
+    AgentStatusPhase.RECONSIDERING: ("刚才下结论太快，换个角度再核一遍…",),
 }
 
 
 def _status_text(phase: AgentStatusPhase, message: str) -> str:
+    anchor = quote_terms(message, limit=1)
+    if anchor:
+        if phase is AgentStatusPhase.UNDERSTANDING:
+            return f"先接住你说的{anchor}…"
+        if phase is AgentStatusPhase.NOTICING:
+            return f"{anchor}这个细节让我停了一下…"
+        if phase is AgentStatusPhase.RECONSIDERING:
+            return f"草稿里对{anchor}下结论太快了，换个角度再核…"
+        if phase is AgentStatusPhase.COMPOSING:
+            return f"在想怎么回你说的{anchor}…"
     variants = _STATUS_LIBRARY[phase]
     index = sum(ord(character) for character in message) % len(variants)
     return variants[index]
+
+
+def composing_status(message: str) -> AgentStatusEvent:
+    """Live-only composing signal for cadences that persist no status events."""
+    return AgentStatusEvent(
+        phase=AgentStatusPhase.COMPOSING, text=_status_text(AgentStatusPhase.COMPOSING, message)
+    )
+
+
+def _memory_anchor(memory_summary: str) -> str:
+    return quote_terms(memory_summary, limit=1)
 
 
 def _recall_text(context: BuiltContext, message: str) -> str:
@@ -60,13 +69,21 @@ def _recall_text(context: BuiltContext, message: str) -> str:
         item for item in context.retrieved_memories if item.score.final >= PUBLIC_RECALL_MIN_SCORE
     ]
     if not recalled:
-        return _status_text(AgentStatusPhase.RECALLING, message)
+        anchor = quote_terms(message, limit=1)
+        if not anchor:
+            return _status_text(AgentStatusPhase.RECALLING, message)
+        return f"翻了翻记忆，还没找到和{anchor}直接相关的…"
     top = recalled[0]
     date_text = f"{top.memory.occurred_at.month}月{top.memory.occurred_at.day}日"
+    anchor = _memory_anchor(top.memory.summary)
     if top.memory.type is MemoryType.CORRECTION:
-        return f"翻到你 {date_text} 纠正过我的一次…"
+        about = f"（关于{anchor}）" if anchor else ""
+        return f"翻到你 {date_text} 纠正过我的一次{about}…"
     if len(recalled) >= 2:
-        return f"找到 {len(recalled)} 条和你有关的记忆…"
+        latest = f"，最近是 {date_text} 的{anchor}" if anchor else ""
+        return f"翻到 {len(recalled)} 条记忆{latest}…"
+    if anchor:
+        return f"想起 {date_text} 你说的{anchor}…"
     return f"翻到你 {date_text} 说的事…"
 
 
@@ -177,7 +194,7 @@ class ConversationCadencePolicy:
         )
 
     def safe_reflection(
-        self, *, decision: CadenceDecision, context: BuiltContext
+        self, *, decision: CadenceDecision, context: BuiltContext, message: str = ""
     ) -> AgentPublicReflectionEvent | None:
         if decision.cadence not in {
             ConversationCadence.REFLECTIVE,
@@ -186,17 +203,19 @@ class ConversationCadencePolicy:
             return None
         if "memory:0" in decision.evidence_refs and context.retrieved_memories:
             memory = context.retrieved_memories[0].memory
-            prefix = (
-                "你之前纠正过我：" if memory.type is MemoryType.CORRECTION else "你之前提到过："
-            )
-            return AgentPublicReflectionEvent(
-                text=f"{prefix}{memory.summary}",
-                evidence_refs=["memory:0"],
-            )
-        return AgentPublicReflectionEvent(
-            text="我有一个还不太确定的猜测：这件事可能不只是一种解释。",
-            evidence_refs=["message:current"],
-        )
+            date_text = f"{memory.occurred_at.month}月{memory.occurred_at.day}日"
+            anchor = _memory_anchor(memory.summary)
+            if anchor:
+                text = f"{anchor}在 {date_text} 也出现过，和这次说的可能有关——先当参考，不当结论。"
+            else:
+                text = f"{date_text} 那次的事和这次可能有关——先当参考，不当结论。"
+            return AgentPublicReflectionEvent(text=text, evidence_refs=["memory:0"])
+        anchor = quote_terms(message, limit=1)
+        if anchor:
+            text = f"关于{anchor}，我想到的不止一种可能，先不下结论。"
+        else:
+            text = "我有一个还不太确定的猜测：这件事可能不只是一种解释。"
+        return AgentPublicReflectionEvent(text=text, evidence_refs=["message:current"])
 
 
 def event_evidence_refs(events: list[AgentPublicEvent]) -> tuple[str, ...]:
