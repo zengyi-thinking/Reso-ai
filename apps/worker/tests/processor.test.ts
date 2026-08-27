@@ -4,6 +4,8 @@ import {
   EventConsumer,
   EventProcessor,
   InMemoryIdempotencyStore,
+  shouldDeadLetterImmediately,
+  workerFailureCode,
   type CommittedEventSource,
   type Delivery,
 } from "../src/events/processor.js";
@@ -79,5 +81,17 @@ describe("EventProcessor", () => {
 
     await expect(consumer.runOnce()).resolves.toBe("acked");
     await expect(consumer.runOnce()).resolves.toBe("idle");
+  });
+
+  it("preserves stable Agent codes and immediately dead-letters non-retryable failures", () => {
+    const invalid = Object.assign(new Error("invalid"), {
+      code: "AGENT_INVALID_RESPONSE",
+      retryable: false,
+    });
+    expect(workerFailureCode(invalid)).toBe("AGENT_INVALID_RESPONSE");
+    expect(shouldDeadLetterImmediately(invalid)).toBe(true);
+    expect(
+      shouldDeadLetterImmediately(Object.assign(new Error("timeout"), { retryable: true })),
+    ).toBe(false);
   });
 });

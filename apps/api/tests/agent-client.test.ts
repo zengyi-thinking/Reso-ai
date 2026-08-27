@@ -1,8 +1,9 @@
-import type {
-  AnalyzeIncomingRequest,
-  PolishDraftRequest,
-  SocialActRequest,
-  SocialEvaluateRequest,
+import {
+  PersonalManualGenerationRequestSchema,
+  type AnalyzeIncomingRequest,
+  type PolishDraftRequest,
+  type SocialActRequest,
+  type SocialEvaluateRequest,
 } from "@reso/contracts";
 import { createAgentTurnRequest } from "@reso/test-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -181,6 +182,45 @@ describe("ResoAgentClient", () => {
     await expect(client.analyzeIncoming(analyzeRequest)).rejects.toMatchObject({
       code: "AGENT_INVALID_RESPONSE",
     });
+  });
+
+  it("uses the Personal Manual endpoint and validates the shared candidate contract", async () => {
+    const request = PersonalManualGenerationRequestSchema.parse({
+      requestId: id,
+      journeyId: id,
+      journeyVersion: "mountain-v1",
+      evidenceSnapshotId: otherId,
+      evidenceSignature: "a".repeat(64),
+      evidence: Array.from({ length: 7 }, (_value, index) => ({
+        evidenceRef: `mountain-v1/question-${index}/choice-${index}@${id}`,
+        journeyVersion: "mountain-v1",
+        stageId: `question-${index}`,
+        questionId: `question-${index}`,
+        choiceId: `choice-${index}`,
+        optionText: "测试选项",
+        responseText: null,
+        target: "self",
+        summary: "中性证据摘要",
+        signals: [{ dimension: "support", value: "observed", weight: 1 }],
+        contextTags: ["test"],
+        pressure: "medium",
+        companionMood: null,
+        elapsedMs: 100,
+        answeredAt: "2026-08-27T08:00:00+08:00",
+      })),
+      traceId: id,
+    });
+    const candidate = await new MockAgentClient().generatePersonalManual(request);
+    const calls: string[] = [];
+    const client = new ResoAgentClient({
+      baseUrl: "http://agent.test",
+      fetchImplementation: async (input) => {
+        calls.push(String(input));
+        return Response.json(candidate);
+      },
+    });
+    await expect(client.generatePersonalManual(request)).resolves.toEqual(candidate);
+    expect(calls).toEqual(["http://agent.test/v1/personal-manual/generate"]);
   });
 
   it("classifies malformed remote JSON as an invalid response", async () => {

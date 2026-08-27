@@ -2,6 +2,8 @@ import { RuntimeConfigSchema } from "@reso/config";
 import { buildApp } from "./app.js";
 import { createAgentClient } from "./agent-client/factory.js";
 import { PostgresSessionResolver } from "./auth/postgres-session-resolver.js";
+import { InMemoryJourneyRepository } from "./journeys/in-memory-journey-repository.js";
+import { PostgresJourneyRepository } from "./journeys/postgres-journey-repository.js";
 import {
   createDevelopmentRepository,
   prepareDevelopmentDemo,
@@ -29,12 +31,17 @@ const developmentRepository =
   config.PRODUCT_REPOSITORY === "memory" ? createDevelopmentRepository() : undefined;
 const repository =
   postgresPool === undefined ? developmentRepository! : new PostgresProductRepository(postgresPool);
+const journeyRepository =
+  postgresPool === undefined
+    ? new InMemoryJourneyRepository()
+    : new PostgresJourneyRepository(postgresPool);
 if (developmentRepository !== undefined) {
   await prepareDevelopmentDemo(developmentRepository, agentClient);
 }
 const app = await buildApp({
   agentClient,
   repository,
+  journeyRepository,
   sessionUserResolver:
     config.SESSION_PROVIDER === "postgres"
       ? new PostgresSessionResolver(repository).resolve

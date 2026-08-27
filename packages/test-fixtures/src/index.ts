@@ -1,4 +1,4 @@
-import type { AgentTurnRequest } from "@reso/contracts";
+import type { AgentTurnRequest, JourneyAnswerInput } from "@reso/contracts";
 
 export * from "./user-alice.js";
 
@@ -14,6 +14,19 @@ export function createAgentTurnRequest(
     conversationId: fixtureId,
     message: "今天有点累。",
     personaVersionId: null,
+    ...overrides,
+  };
+}
+
+export function createJourneyAnswerInput(
+  overrides: Partial<JourneyAnswerInput> = {},
+): JourneyAnswerInput {
+  return {
+    stageId: "fatigue",
+    questionId: "fatigue",
+    choiceId: "empathize",
+    elapsedMs: 1_200,
+    clientAnswerId: fixtureId,
     ...overrides,
   };
 }
