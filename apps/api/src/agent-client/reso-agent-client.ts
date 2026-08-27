@@ -51,23 +51,19 @@ export class ResoAgentClient implements IAgentClient {
   }
 
   async analyzeIncoming(request: AnalyzeIncomingRequest): Promise<AnalyzeIncomingResponse> {
-    return this.post(
-      "/v1/turn",
-      { task: "analyze_incoming", ...request },
-      AnalyzeIncomingResponseSchema,
-    );
+    return this.post("/v1/assist/analyze", request, AnalyzeIncomingResponseSchema);
   }
 
   async polishDraft(request: PolishDraftRequest): Promise<PolishDraftResponse> {
-    return this.post("/v1/turn", { task: "polish_draft", ...request }, PolishDraftResponseSchema);
+    return this.post("/v1/assist/polish", request, PolishDraftResponseSchema);
   }
 
   async actSocially(request: SocialActRequest): Promise<SocialActResponse> {
-    return this.post("/v1/social/act", request, SocialActResponseSchema);
+    return this.post("/v1/tea-party/act", request, SocialActResponseSchema);
   }
 
   async evaluateSocial(request: SocialEvaluateRequest): Promise<SocialEvaluateResponse> {
-    return this.post("/v1/social/evaluate", request, SocialEvaluateResponseSchema);
+    return this.post("/v1/tea-party/evaluate", request, SocialEvaluateResponseSchema);
   }
 
   async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {

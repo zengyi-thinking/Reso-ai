@@ -82,8 +82,61 @@ class DeterministicModelProvider:
     model = "reso-relational-v1"
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
+        if request.generation_phase == "assist_analyze":
+            content = json.dumps(
+                {
+                    "interpretation": "对方像是在发出一个轻量邀请，同时也给你保留选择空间。",
+                    "replyRoutes": [
+                        {
+                            "id": "gentle-follow-up",
+                            "label": "顺着聊下去",
+                            "suggestedReply": "听起来不错，你有想去的地方吗？",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        elif request.generation_phase == "assist_polish":
+            payload = json.loads(request.user_message)
+            content = json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "id": "warm-clear",
+                            "text": f"我想说得温和一点：{payload['draft']}",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        elif request.generation_phase == "tea_party_act":
+            payload = json.loads(request.user_message)
+            turn_no = int(payload["turnNo"])
+            content = json.dumps(
+                {
+                    "content": "我们可以先从一个轻松、不给彼此压力的话题开始。",
+                    "shouldStop": turn_no >= 8,
+                    "stopReason": "max_turns" if turn_no >= 8 else None,
+                },
+                ensure_ascii=False,
+            )
+        elif request.generation_phase == "tea_party_evaluate":
+            content = json.dumps(
+                {
+                    "headline": "你们都更适合低压力、真实的交流",
+                    "conversationStarter": "可以从最近让自己放松的一件小事聊起。",
+                },
+                ensure_ascii=False,
+            )
         relationship = any(hint in request.user_message for hint in _RELATIONSHIP_HINTS)
-        if request.generation_phase == "draft":
+        if request.generation_phase in {
+            "assist_analyze",
+            "assist_polish",
+            "tea_party_act",
+            "tea_party_evaluate",
+        }:
+            pass
+        elif request.generation_phase == "draft":
             content = (
                 "我第一反应是把这当成疏远的信号，但这个反应可能太快了，先别当真。"
                 if relationship

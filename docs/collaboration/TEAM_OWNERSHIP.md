@@ -7,4 +7,4 @@
 | Agent    | `apps/agent-service`, `apps/agent-lab`, `evals`     | 正式业务 Truth、最终 Consent/Persona mutation |
 | Shared   | `packages/contracts`, `packages/test-fixtures`      | 单方无 review 的破坏性变更                    |
 
-跨边界需求先在 Contracts 和 ADR 中明确。团队可以基于 Mock/fixtures 独立开发，集成时不交换私有 DTO。
+跨边界需求先在 Contracts 和 ADR 中明确。团队可以基于确定性 fixtures 独立测试，集成时不交换私有 DTO，产品路径不得引入替代模型。

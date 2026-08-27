@@ -14,7 +14,7 @@ export async function handleSocialMission(
   if (runner === undefined) return Promise.resolve(event.type === "social_mission.created");
   const connectionId = event.payload.connectionId;
   if (typeof connectionId !== "string") return false;
-  if (event.type === "relationship.updated" || event.type === "consent.granted") {
+  if (event.type === "connection.established" || event.type === "consent.granted") {
     await runner.onRelationshipEstablished(connectionId, event.correlationId);
     return true;
   }
@@ -28,7 +28,7 @@ export async function handleSocialMission(
     await runner.stopForConsentRevocation(connectionId, userId);
     return true;
   }
-  if (event.type === "relationship.blocked") {
+  if (event.type === "connection.blocked") {
     const blockerUserId = event.payload.blockerUserId;
     if (typeof blockerUserId !== "string") return false;
     await runner.stopForBlock(connectionId, blockerUserId);

@@ -1,7 +1,7 @@
 import type { AnalyzeIncomingRequest } from "@reso/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import { buildApp } from "../src/app.js";
 import { InMemoryProductRepository } from "../src/product/in-memory-repository.js";
 import { InMemoryWindowRateLimiter } from "../src/product/rate-limiter.js";
@@ -57,12 +57,12 @@ const sessionResolver = async (request: FastifyRequest): Promise<string | null> 
   return typeof value === "string" ? value : null;
 };
 
-class SlowCountingAgentClient extends MockAgentClient {
+class SlowCountingAgentClient extends TestAgentClient {
   calls = 0;
 
   override async analyzeIncoming(
-    request: Parameters<MockAgentClient["analyzeIncoming"]>[0],
-  ): ReturnType<MockAgentClient["analyzeIncoming"]> {
+    request: Parameters<TestAgentClient["analyzeIncoming"]>[0],
+  ): ReturnType<TestAgentClient["analyzeIncoming"]> {
     this.calls += 1;
     await new Promise((resolve) => setTimeout(resolve, 20));
     return super.analyzeIncoming(request);
@@ -73,7 +73,7 @@ describe("Agent Assist Product API", () => {
   it("analyzes an incoming message idempotently and keeps the result private", async () => {
     const store = repository();
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository: store,
       sessionUserResolver: sessionResolver,
     });
@@ -136,7 +136,7 @@ describe("Agent Assist Product API", () => {
   });
 
   it("rejects an Agent Assist response with a mismatched trace", async () => {
-    class WrongTraceClient extends MockAgentClient {
+    class WrongTraceClient extends TestAgentClient {
       override async analyzeIncoming(request: AnalyzeIncomingRequest) {
         return { ...(await super.analyzeIncoming(request)), traceId: userB };
       }
@@ -160,7 +160,7 @@ describe("Agent Assist Product API", () => {
   it("returns polish candidates without creating or sending a human message", async () => {
     const store = repository();
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository: store,
       sessionUserResolver: sessionResolver,
     });
@@ -179,7 +179,7 @@ describe("Agent Assist Product API", () => {
   it("keeps human chat usable when Agent is offline", async () => {
     const store = repository();
     app = await buildApp({
-      agentClient: new MockAgentClient("unavailable"),
+      agentClient: new TestAgentClient("unavailable"),
       repository: store,
       sessionUserResolver: sessionResolver,
     });
@@ -203,7 +203,7 @@ describe("Agent Assist Product API", () => {
 
   it("requires a server-side session and enforces rate limiting", async () => {
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository: repository(),
       rateLimiter: new InMemoryWindowRateLimiter(1, 60_000),
       sessionUserResolver: sessionResolver,

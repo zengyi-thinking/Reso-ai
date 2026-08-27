@@ -1,14 +1,12 @@
-# ADR-0006: Mock Agent Provider
+# ADR-0006: Mock Agent Provider（已废弃）
 
-**Status:** Accepted  
+**Status:** Superseded
 **Date:** 2026-08-26
 
 ## Decision
 
-API 通过 `IAgentClient` 选择 `MockAgentClient` 或 `ResoAgentClient`。本地/CI 默认 Mock；两者返回相同 Contract。生产真实 provider 失败时禁止 silent fallback。
+该早期方案已废弃。Product API 在所有运行环境中只装配 `ResoAgentClient`；配置缺失或真实 Agent 调用失败时显式报错，禁止切换或回退到替代模型。
 
 ## Consequences
 
-Frontend/Backend 不等待 Agent，也不依赖付费模型；必须用契约测试持续防止 Mock 漂移或过度理想化。
-
-> 2026-08-26 更新：按 Real Model First 决策，MockAgentClient 已从产品路径移除；本 ADR 的契约一致性要求继续适用于测试 stub。
+CI 使用测试目录内的确定性 `TestAgentClient` 测试桩验证 Backend 编排；它不是可配置模型，也不会进入构建产物或产品运行路径。真实联调必须调用 MiniMax 驱动的 Agent Service。

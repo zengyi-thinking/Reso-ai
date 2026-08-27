@@ -7,7 +7,7 @@ import type {
 import { createAgentTurnRequest } from "@reso/test-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentClientError } from "../src/agent-client/agent-client.js";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import { ResoAgentClient } from "../src/agent-client/reso-agent-client.js";
 
 const id = "0198d4f3-2f34-7c52-95cc-7ff4f6f93a12";
@@ -96,7 +96,7 @@ describe("ResoAgentClient", () => {
     ).rejects.toThrow();
   });
 
-  it("parses the shared error envelope without falling back to Mock", async () => {
+  it("parses the shared error envelope without provider fallback", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -117,8 +117,8 @@ describe("ResoAgentClient", () => {
     });
   });
 
-  it("returns deterministic Mock results for the same idempotency key", async () => {
-    const client = new MockAgentClient();
+  it("returns deterministic test-fixture results for the same idempotency key", async () => {
+    const client = new TestAgentClient();
     const first = await client.analyzeIncoming(analyzeRequest);
     const second = await client.analyzeIncoming(analyzeRequest);
     expect(first).toEqual(second);
@@ -130,7 +130,7 @@ describe("ResoAgentClient", () => {
     "supports the %s failure drill",
     async (mode) => {
       await expect(
-        new MockAgentClient(mode).analyzeIncoming(analyzeRequest),
+        new TestAgentClient(mode).analyzeIncoming(analyzeRequest),
       ).rejects.toBeInstanceOf(AgentClientError);
     },
   );
@@ -140,13 +140,13 @@ describe("ResoAgentClient", () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = String(input);
       calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
-      if (url.endsWith("/v1/turn") && JSON.parse(String(init?.body)).task === "analyze_incoming") {
+      if (url.endsWith("/v1/assist/analyze")) {
         return Response.json({ interpretation: "解释", replyRoutes: [], traceId: id });
       }
-      if (url.endsWith("/v1/turn")) {
+      if (url.endsWith("/v1/assist/polish")) {
         return Response.json({ candidates: [{ id: "one", text: "候选" }], traceId: id });
       }
-      if (url.endsWith("/v1/social/act")) {
+      if (url.endsWith("/v1/tea-party/act")) {
         return Response.json({
           speakerAgentId: id,
           content: "受控内容",

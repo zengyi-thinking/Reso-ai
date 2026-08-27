@@ -1,9 +1,11 @@
 import asyncio
+import hmac
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
@@ -19,6 +21,8 @@ from reso_agent.contracts import (
     AgentStreamEvent,
     AgentTurnRequest,
     AgentTurnResponse,
+    AnalyzeIncomingRequest,
+    AnalyzeIncomingResponse,
     LabMemoryUpdate,
     LabPatchDecision,
     LabSession,
@@ -29,6 +33,12 @@ from reso_agent.contracts import (
     PersonaContent,
     PersonaInitializeRequest,
     PersonaVersion,
+    PolishDraftRequest,
+    PolishDraftResponse,
+    SocialActRequestV1,
+    SocialActResponseV1,
+    SocialEvaluateRequestV1,
+    SocialEvaluateResponseV1,
     SocialMission,
     SocialMissionResult,
 )
@@ -37,6 +47,7 @@ from reso_agent.models.provider import ModelProviderError
 from reso_agent.models.router import model_provider_for, model_route_from_env
 from reso_agent.persona.draft import build_journey_draft
 from reso_agent.runtime.pipeline import AgentRuntime
+from reso_agent.runtime.product_tasks import ProductTaskRuntime
 
 app = FastAPI(title="Reso Agent", version="0.1.0")
 app.add_middleware(
@@ -49,8 +60,20 @@ app.add_middleware(
 # RESO_MODEL_ROUTE=deterministic is the explicit opt-out used by the test suite.
 _model_provider = model_provider_for(model_route_from_env())
 runtime = AgentRuntime(model_provider=_model_provider)
+product_tasks = ProductTaskRuntime(_model_provider)
 lab = LabWorkspace(model_provider=_model_provider)
 _stream_event_adapter: TypeAdapter[AgentStreamEvent] = TypeAdapter(AgentStreamEvent)
+_service_token = os.getenv("AGENT_SERVICE_TOKEN", "").strip()
+if os.getenv("APP_ENV", "development").lower() == "production" and not _service_token:
+    raise RuntimeError("Production Agent Service requires AGENT_SERVICE_TOKEN")
+
+
+async def require_service_auth(authorization: str | None = Header(default=None)) -> None:
+    if not _service_token:
+        return
+    expected = f"Bearer {_service_token}"
+    if authorization is None or not hmac.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="Service authentication required")
 
 
 @app.get("/v1/health")
@@ -59,9 +82,67 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/v1/agent/turn", response_model=AgentTurnResponse, response_model_by_alias=True)
-async def turn(request: AgentTurnRequest) -> AgentTurnResponse:
+async def turn(
+    request: AgentTurnRequest, _auth: None = Depends(require_service_auth)
+) -> AgentTurnResponse:
     response, _trace = await runtime.turn(request)
     return response
+
+
+@app.post(
+    "/v1/assist/analyze",
+    response_model=AnalyzeIncomingResponse,
+    response_model_by_alias=True,
+)
+async def analyze_incoming(
+    request: AnalyzeIncomingRequest, _auth: None = Depends(require_service_auth)
+) -> AnalyzeIncomingResponse:
+    try:
+        return await product_tasks.analyze_incoming(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Agent Assist analysis failed") from error
+
+
+@app.post(
+    "/v1/assist/polish",
+    response_model=PolishDraftResponse,
+    response_model_by_alias=True,
+)
+async def polish_draft(
+    request: PolishDraftRequest, _auth: None = Depends(require_service_auth)
+) -> PolishDraftResponse:
+    try:
+        return await product_tasks.polish_draft(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Agent Assist polish failed") from error
+
+
+@app.post(
+    "/v1/tea-party/act",
+    response_model=SocialActResponseV1,
+    response_model_by_alias=True,
+)
+async def tea_party_act(
+    request: SocialActRequestV1, _auth: None = Depends(require_service_auth)
+) -> SocialActResponseV1:
+    try:
+        return await product_tasks.act_socially(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Tea Party act failed") from error
+
+
+@app.post(
+    "/v1/tea-party/evaluate",
+    response_model=SocialEvaluateResponseV1,
+    response_model_by_alias=True,
+)
+async def tea_party_evaluate(
+    request: SocialEvaluateRequestV1, _auth: None = Depends(require_service_auth)
+) -> SocialEvaluateResponseV1:
+    try:
+        return await product_tasks.evaluate_social(request)
+    except ModelProviderError as error:
+        raise HTTPException(status_code=502, detail="Tea Party evaluation failed") from error
 
 
 @app.post(
@@ -69,12 +150,16 @@ async def turn(request: AgentTurnRequest) -> AgentTurnResponse:
     response_model=AgentReflectionResponse,
     response_model_by_alias=True,
 )
-async def reflect(_request: AgentReflectionRequest) -> AgentReflectionResponse:
+async def reflect(
+    _request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
+) -> AgentReflectionResponse:
     return AgentReflectionResponse(memory_candidates=[], persona_patch_candidates=[])
 
 
 @app.post("/v1/persona/initialize", response_model=PersonaVersion, response_model_by_alias=True)
-async def initialize_persona(request: PersonaInitializeRequest) -> PersonaVersion:
+async def initialize_persona(
+    request: PersonaInitializeRequest, _auth: None = Depends(require_service_auth)
+) -> PersonaVersion:
     if not request.answers:
         return PersonaVersion(
             id=uuid4(),
@@ -95,12 +180,16 @@ async def initialize_persona(request: PersonaInitializeRequest) -> PersonaVersio
     response_model=AgentReflectionResponse,
     response_model_by_alias=True,
 )
-async def suggest_patch(_request: AgentReflectionRequest) -> AgentReflectionResponse:
+async def suggest_patch(
+    _request: AgentReflectionRequest, _auth: None = Depends(require_service_auth)
+) -> AgentReflectionResponse:
     return AgentReflectionResponse(memory_candidates=[], persona_patch_candidates=[])
 
 
 @app.post("/v1/social/act", response_model=SocialMissionResult, response_model_by_alias=True)
-async def social_act(request: SocialMission) -> SocialMissionResult:
+async def social_act(
+    request: SocialMission, _auth: None = Depends(require_service_auth)
+) -> SocialMissionResult:
     return SocialMissionResult(
         mission_id=request.mission_id,
         summary="Bootstrap skeleton: no external social action was executed.",
@@ -116,7 +205,9 @@ async def social_act(request: SocialMission) -> SocialMissionResult:
 
 
 @app.post("/v1/social/evaluate", response_model=SocialMissionResult, response_model_by_alias=True)
-async def social_evaluate(request: SocialMissionResult) -> SocialMissionResult:
+async def social_evaluate(
+    request: SocialMissionResult, _auth: None = Depends(require_service_auth)
+) -> SocialMissionResult:
     return request
 
 

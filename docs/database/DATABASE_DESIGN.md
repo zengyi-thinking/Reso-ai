@@ -25,6 +25,8 @@ PostgreSQL + pgvector 保存正式事实和后续向量检索，Redis 用于简�
 
 Product API/Backend Worker 是正式表的唯一写入者。Agent Service 只接收授权后的 context 并返回 Candidate；不得持有写凭据。`persona_profiles.current_version_id` 指向当前已提交版本，Candidate 在 accepted 后仍需由 Persona Service 创建新 Version。
 
+`connections` 是两名用户是否已正式连接、关闭或屏蔽的产品事实；`relationships` 是对用户或 Agent 互动阶段的可演进关系模型。Relationship 不得覆盖 Connection 的正式状态，Connection 事件使用独立语义并通过受控 Product command 更新。
+
 ## Memory != Persona
 
 `memories` 保存事件摘要、类型、来源和时间，可带 embedding；`persona_versions` 保存用户确认后的版本化模型。`persona_evidence` 显式连接 Patch Candidate 与 Memory，避免一次事件直接成为人格事实。

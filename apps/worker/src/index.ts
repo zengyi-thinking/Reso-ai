@@ -25,11 +25,11 @@ const agentClient = createAgentClient(config.AGENT_SERVICE_URL, {
 const teaPartyService = new TeaPartyService(repository, agentClient);
 const workerId = `social-worker:${randomUUID()}`;
 const supportedEvents = [
-  "relationship.updated",
+  "connection.established",
   "social_mission.created",
   "consent.granted",
   "consent.revoked",
-  "relationship.blocked",
+  "connection.blocked",
 ];
 let stopping = false;
 const stop = (): void => {

@@ -12,12 +12,12 @@ import type {
   SocialMission,
   SocialMissionResult,
 } from "@reso/contracts";
-import type { IAgentClient } from "../src/agent-client/agent-client.js";
 import { buildApp } from "../src/app.js";
+import { TestAgentClient } from "./test-agent-client.js";
 
 // A hermetic test double: production code has no mock provider anymore.
-class StubAgentClient implements IAgentClient {
-  async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
+class StubAgentClient extends TestAgentClient {
+  override async turn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
     return {
       requestId: request.requestId,
       message: "我会先听你说。",
@@ -31,23 +31,27 @@ class StubAgentClient implements IAgentClient {
     };
   }
 
-  async reflect(_request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
+  override async reflect(_request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
     return { memoryCandidates: [], personaPatchCandidates: [] };
   }
 
-  async initializePersona(_request: PersonaInitializeRequest): Promise<PersonaVersion> {
+  override async initializePersona(_request: PersonaInitializeRequest): Promise<PersonaVersion> {
     throw new Error("not needed in these tests");
   }
 
-  async suggestPersonaPatch(_request: AgentReflectionRequest): Promise<PersonaPatchCandidate[]> {
+  override async suggestPersonaPatch(
+    _request: AgentReflectionRequest,
+  ): Promise<PersonaPatchCandidate[]> {
     return [];
   }
 
-  async runSocialAction(_request: SocialMission): Promise<SocialMissionResult> {
+  override async runSocialAction(_request: SocialMission): Promise<SocialMissionResult> {
     throw new Error("not needed in these tests");
   }
 
-  async evaluateSocialInteraction(request: SocialMissionResult): Promise<SocialMissionResult> {
+  override async evaluateSocialInteraction(
+    request: SocialMissionResult,
+  ): Promise<SocialMissionResult> {
     return request;
   }
 }

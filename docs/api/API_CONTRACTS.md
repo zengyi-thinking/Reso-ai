@@ -17,12 +17,16 @@
 | POST   | `/v1/persona/suggest-patch` | reflection input → candidates                      |
 | POST   | `/v1/social/act`            | `SocialMission → SocialMissionResult`              |
 | POST   | `/v1/social/evaluate`       | mission result → evaluated result                  |
+| POST   | `/v1/assist/analyze`        | `AnalyzeIncomingRequest → AnalyzeIncomingResponse` |
+| POST   | `/v1/assist/polish`         | `PolishDraftRequest → PolishDraftResponse`         |
+| POST   | `/v1/tea-party/act`         | `SocialActRequest → SocialActResponse`             |
+| POST   | `/v1/tea-party/evaluate`    | `SocialEvaluateRequest → SocialEvaluateResponse`   |
 
 模型名、provider、prompt 版本和原始 model call 都是 Agent 内部细节，禁止出现在 URL。
 
 ## Provider adapter
 
-`IAgentClient` 定义 `turn`、`reflect`、`initializePersona`、`suggestPersonaPatch`、`runSocialAction`、`evaluateSocialInteraction`。Product API 只装配 `ResoAgentClient`；所有远端成功响应再次通过 Zod parse，失败响应通过共享 error envelope parse。真实 provider 失败直接报错，不存在 Mock 降级路径。
+`IAgentClient` 同时定义基础 Agent、Assist 与 Tea Party 能力。Product API 只装配 `ResoAgentClient`；所有远端成功响应再次通过 Zod parse，失败响应通过共享 error envelope parse。真实 provider 失败直接报错，不存在替代模型降级路径。旧 `/v1/social/*` 与 Tea Party v1 使用不同契约，后者固定使用 `/v1/tea-party/*`，禁止在同一路由复用不兼容 Schema。
 
 ## EventEnvelope
 

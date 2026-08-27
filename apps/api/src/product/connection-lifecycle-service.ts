@@ -24,7 +24,7 @@ export class ConnectionLifecycleService {
         status: "established",
         establishedAt: this.now(),
       };
-      return this.commit(updated, "relationship.updated", traceId, {
+      return this.commit(updated, "connection.established", traceId, {
         connectionId,
         status: "established",
       });
@@ -70,7 +70,7 @@ export class ConnectionLifecycleService {
         status: "blocked",
         blockedByUserId: blockerUserId,
       };
-      return this.commit(updated, "relationship.blocked", traceId, {
+      return this.commit(updated, "connection.blocked", traceId, {
         connectionId,
         blockerUserId,
       });

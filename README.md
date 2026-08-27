@@ -17,7 +17,7 @@ Journey → Persona Draft → User Edit → Persona V1 → Agent Birth
 ## Architecture
 
 ```text
-Web ──REST/Contracts──> Product API ──IAgentClient──> Mock Agent | Reso Agent
+Web ──REST/Contracts──> Product API ──IAgentClient──> Reso Agent ──> MiniMax
                               │                            │
                               │ owns truth                 │ proposes candidates
                               ▼                            ▼
@@ -97,7 +97,7 @@ pnpm test:database
 pnpm check
 ```
 
-CI 默认只使用 Mock 和 deterministic eval，不调用付费模型。
+CI 使用确定性测试桩和 deterministic eval，不调用付费模型；产品运行路径始终使用真实 Reso Agent。
 
 ## Team Ownership
 

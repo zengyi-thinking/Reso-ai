@@ -4,7 +4,6 @@ import { createAgentClient } from "./agent-client/factory.js";
 import { PostgresSessionResolver } from "./auth/postgres-session-resolver.js";
 import {
   createDevelopmentRepository,
-  prepareDevelopmentDemo,
   resolveDevelopmentSession,
 } from "./product/development-demo.js";
 import { createPostgresPool, PostgresProductRepository } from "./product/postgres-repository.js";
@@ -21,6 +20,9 @@ if (config.APP_ENV === "production" && config.PRODUCT_REPOSITORY !== "postgres")
 if (config.APP_ENV === "production" && config.SESSION_PROVIDER !== "postgres") {
   throw new Error("Production requires SESSION_PROVIDER=postgres");
 }
+if (config.APP_ENV === "production" && config.AGENT_SERVICE_TOKEN.length === 0) {
+  throw new Error("Production requires AGENT_SERVICE_TOKEN");
+}
 
 const postgresPool =
   config.PRODUCT_REPOSITORY === "postgres" ? createPostgresPool(config.DATABASE_URL) : undefined;
@@ -28,9 +30,6 @@ const developmentRepository =
   config.PRODUCT_REPOSITORY === "memory" ? createDevelopmentRepository() : undefined;
 const repository =
   postgresPool === undefined ? developmentRepository! : new PostgresProductRepository(postgresPool);
-if (developmentRepository !== undefined) {
-  await prepareDevelopmentDemo(developmentRepository, agentClient);
-}
 const app = await buildApp({
   agentClient,
   repository,

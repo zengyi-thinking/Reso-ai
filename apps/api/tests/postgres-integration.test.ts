@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import { buildApp } from "../src/app.js";
 import { PostgresSessionResolver } from "../src/auth/postgres-session-resolver.js";
 import {
@@ -72,7 +72,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
   });
 
   it("persists one bounded tea party and survives service reconstruction", async () => {
-    const service = new TeaPartyService(repository!, new MockAgentClient(), { maxTurns: 8 });
+    const service = new TeaPartyService(repository!, new TestAgentClient(), { maxTurns: 8 });
     const first = await service.onRelationshipEstablished(connectionId, traceId);
     const duplicate = await service.onRelationshipEstablished(connectionId, traceId);
     const completed = await service.run(connectionId);
@@ -99,7 +99,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
 
   it("uses a hashed production session and keeps Assist private", async () => {
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository: repository!,
       rateLimiter: new PostgresWindowRateLimiter(pool!, 10, 60_000),
       sessionUserResolver: new PostgresSessionResolver(repository!).resolve,
@@ -130,7 +130,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
 
   it("keeps the same trace on Agent failure while human chat still commits", async () => {
     app = await buildApp({
-      agentClient: new MockAgentClient("unavailable"),
+      agentClient: new TestAgentClient("unavailable"),
       repository: repository!,
       rateLimiter: new PostgresWindowRateLimiter(pool!, 10, 60_000),
       sessionUserResolver: new PostgresSessionResolver(repository!).resolve,
@@ -211,7 +211,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
   });
 
   it("claims each durable outbox event once across competing workers", async () => {
-    const service = new TeaPartyService(repository!, new MockAgentClient());
+    const service = new TeaPartyService(repository!, new TestAgentClient());
     await service.onRelationshipEstablished(connectionId, traceId);
     const [left, right] = await Promise.all([
       repository!.claimOutboxEvents("social-worker:left", ["social_mission.created"], 10),
@@ -233,7 +233,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
   it("does not let a stale worker acknowledge a newer outbox attempt", async () => {
     await repository!.saveOutboxEvent({
       id: "0198d4f3-2f34-7c52-95cc-7ff4f6f93f03",
-      eventType: "relationship.blocked",
+      eventType: "connection.blocked",
       subjectId: connectionId,
       traceId,
       idempotencyKey: "stale-worker-fencing",
@@ -242,7 +242,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     });
     const first = await repository!.claimOutboxEvents(
       "social-fencing-worker:first",
-      ["relationship.blocked"],
+      ["connection.blocked"],
       1,
     );
     await pool!.query(
@@ -252,7 +252,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     );
     const second = await repository!.claimOutboxEvents(
       "social-fencing-worker:second",
-      ["relationship.blocked"],
+      ["connection.blocked"],
       1,
     );
 
@@ -271,7 +271,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
   it("releases retryable jobs and dead-letters them after five attempts", async () => {
     await repository!.saveOutboxEvent({
       id: "0198d4f3-2f34-7c52-95cc-7ff4f6f93f02",
-      eventType: "relationship.blocked",
+      eventType: "connection.blocked",
       subjectId: connectionId,
       traceId,
       idempotencyKey: "retry-e2e",
@@ -281,7 +281,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       const claimed = await repository!.claimOutboxEvents(
         `social-retry-worker:${attempt}`,
-        ["relationship.blocked"],
+        ["connection.blocked"],
         1,
       );
       expect(claimed).toHaveLength(1);
@@ -294,7 +294,7 @@ describePostgres("PostgreSQL Product Backend integration", () => {
       );
     }
     expect(
-      await repository!.claimOutboxEvents("social-retry-worker:final", ["relationship.blocked"], 1),
+      await repository!.claimOutboxEvents("social-retry-worker:final", ["connection.blocked"], 1),
     ).toEqual([]);
     const state = await pool!.query<{ attempt_count: number; dead_lettered: boolean }>(
       `SELECT c.attempt_count,EXISTS(

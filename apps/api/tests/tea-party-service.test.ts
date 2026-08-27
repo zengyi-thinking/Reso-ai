@@ -5,7 +5,7 @@ import type {
   SocialEvaluateResponse,
 } from "@reso/contracts";
 import { describe, expect, it } from "vitest";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import type { ConnectionRecord } from "../src/product/entities.js";
 import { InMemoryProductRepository } from "../src/product/in-memory-repository.js";
 import { TeaPartyService } from "../src/product/tea-party-service.js";
@@ -38,14 +38,14 @@ describe("post-connection Tea Party orchestration", () => {
     const repository = new InMemoryProductRepository({
       connections: [connection({ status: "pending" })],
     });
-    const service = new TeaPartyService(repository, new MockAgentClient());
+    const service = new TeaPartyService(repository, new TestAgentClient());
     expect(await service.onRelationshipEstablished(connectionId, traceId)).toBeNull();
     expect(await repository.getTeaPartyMissionByConnection(connectionId)).toBeNull();
   });
 
   it("creates one mission for duplicate events and never exceeds eight turns", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const service = new TeaPartyService(repository, new MockAgentClient(), { maxTurns: 8 });
+    const service = new TeaPartyService(repository, new TestAgentClient(), { maxTurns: 8 });
     const first = await service.onRelationshipEstablished(connectionId, traceId);
     const duplicate = await service.onRelationshipEstablished(connectionId, traceId);
     const completed = await service.run(connectionId);
@@ -72,7 +72,7 @@ describe("post-connection Tea Party orchestration", () => {
     const firstTurnRelease = new Promise<void>((resolve) => {
       releaseFirstTurn = resolve;
     });
-    class PausingAgentClient extends MockAgentClient {
+    class PausingAgentClient extends TestAgentClient {
       calls = 0;
       override async actSocially(request: SocialActRequest): Promise<SocialActResponse> {
         this.calls += 1;
@@ -100,7 +100,7 @@ describe("post-connection Tea Party orchestration", () => {
 
   it("stops an unfinished mission after consent is revoked", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const service = new TeaPartyService(repository, new MockAgentClient());
+    const service = new TeaPartyService(repository, new TestAgentClient());
     await service.onRelationshipEstablished(connectionId, traceId);
     await service.stopForConsentRevocation(connectionId, userA);
     const mission = await repository.getTeaPartyMissionByConnection(connectionId);
@@ -111,14 +111,14 @@ describe("post-connection Tea Party orchestration", () => {
 
   it("stops an unfinished mission after a participant blocks the relationship", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const service = new TeaPartyService(repository, new MockAgentClient());
+    const service = new TeaPartyService(repository, new TestAgentClient());
     await service.onRelationshipEstablished(connectionId, traceId);
     await service.stopForBlock(connectionId, userB);
     expect((await repository.getTeaPartyMissionByConnection(connectionId))?.status).toBe("blocked");
   });
 
   it("rejects a wrong speaker/trace before it can enter the database", async () => {
-    class InvalidAgentClient extends MockAgentClient {
+    class InvalidAgentClient extends TestAgentClient {
       override async actSocially(request: SocialActRequest): Promise<SocialActResponse> {
         return { ...(await super.actSocially(request)), speakerAgentId: agentB, traceId: userA };
       }
@@ -132,7 +132,7 @@ describe("post-connection Tea Party orchestration", () => {
   });
 
   it("rejects disclosure above the authorized L2 level before persistence", async () => {
-    class PrivateDisclosureClient extends MockAgentClient {
+    class PrivateDisclosureClient extends TestAgentClient {
       override async actSocially(request: SocialActRequest): Promise<SocialActResponse> {
         return {
           ...(await super.actSocially(request)),
@@ -153,7 +153,7 @@ describe("post-connection Tea Party orchestration", () => {
   });
 
   it("keeps completed records readable when optional summary generation fails", async () => {
-    class SummaryFailureClient extends MockAgentClient {
+    class SummaryFailureClient extends TestAgentClient {
       override async evaluateSocial(
         _request: SocialEvaluateRequest,
       ): Promise<SocialEvaluateResponse> {
@@ -171,7 +171,7 @@ describe("post-connection Tea Party orchestration", () => {
 
   it("surfaces retryable Agent failures until the bounded retry budget is exhausted", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const service = new TeaPartyService(repository, new MockAgentClient("unavailable"), {
+    const service = new TeaPartyService(repository, new TestAgentClient("unavailable"), {
       maxRetries: 2,
     });
     await service.onRelationshipEstablished(connectionId, traceId);

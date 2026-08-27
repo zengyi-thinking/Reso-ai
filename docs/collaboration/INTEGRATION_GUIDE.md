@@ -12,11 +12,11 @@ Web 从 `@reso/contracts` 导入类型/schema，通过 Product API 请求。开�
 
 Tea Party 只在真人 Connection 已建立且双方 Proxy Consent 有效后创建。Backend 通过 Outbox 产生 `social_mission.created`，Worker 通过 `TeaPartyJobRunner` 执行有限轮任务。Frontend 只查询 Product API，不调用 Agent Service。
 
-本地默认使用 Mock；真实联调设置 `AGENT_PROVIDER=remote`、`AGENT_SERVICE_URL`、`AGENT_SERVICE_TOKEN` 和 `AGENT_TIMEOUT_MS`。真实服务必须先通过 Assist/Social Act/Social Evaluate Contract Test，不能把不合法响应写入数据库。
+本地和生产都使用真实 `ResoAgentClient`。联调只需配置 `AGENT_SERVICE_URL`、`AGENT_SERVICE_TOKEN` 和 `AGENT_TIMEOUT_MS`；不存在 Provider 切换或替代模型回退。真实服务必须先通过 Assist/Social Act/Social Evaluate Contract Test，不能把不合法响应写入数据库。
 
 Product API 支持轮询 `/api/notifications` 和 SSE `/api/notifications/stream`。SSE 只发送事件类型、Connection ID、时间和 Trace；Frontend 收到 `tea_party.ready` 后再调用 Tea Party GET 接口读取有权限保护的正文。断线时轮询仍可兜底。
 
-当前 Agent Service 的 Python Contract 仍是旧版 `AgentTurnRequest/SocialMissionResult`，与 Backend 的 Assist Task 和单轮 Social Act Contract 不一致。必须由 Tech Lead 冻结共享 Contract、Agent 团队更新 Pydantic/OpenAPI 后，才能进行真实 Agent 联调；Backend 不应越界修改 Agent Runtime 或 Prompt。
+Agent Service 已为 Assist 与 Tea Party v1 提供对应 Pydantic Contract 和版本化 Prompt：`/v1/assist/*`、`/v1/tea-party/*`。旧版 `SocialMissionResult` 路由继续作为兼容接口存在，但不与 Tea Party 共用 Schema。真实联调必须验证 Zod/Pydantic aliases、trace 回传、Disclosure 和 MiniMax 结构化输出。
 
 ## TypeScript ↔ Python
 

@@ -46,10 +46,10 @@ describe("Connection lifecycle committed events", () => {
       blockedByUserId: userA,
     });
     expect(events.map((event) => event.eventType)).toEqual([
-      "relationship.updated",
+      "connection.established",
       "consent.granted",
       "consent.granted",
-      "relationship.blocked",
+      "connection.blocked",
     ]);
   });
 

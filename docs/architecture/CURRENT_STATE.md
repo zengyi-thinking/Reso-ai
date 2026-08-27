@@ -31,8 +31,8 @@
 - pnpm + Turborepo TypeScript workspace 已建立。
 - Web、Product API、Worker、Agent Service、Agent Lab 均有独立边界和可构建骨架。
 - Contracts 同时提供运行时 Zod 校验和 TypeScript 类型。
-- PostgreSQL/pgvector schema、Redis 边界、Mock/Real Agent adapter、Docker 和 CI 已建立。
-- First Closed Loop 目前只完成基础 Contract、Mock、UI 路由和测试接缝；尚未完成生产业务。
+- PostgreSQL/pgvector schema、Redis 边界、真实 Reso Agent adapter、Docker 和 CI 已建立。
+- First Closed Loop 已具备基础 Contract、真实 Agent 路由、UI 路由和确定性测试接缝；完整生产业务仍在演进。
 - 两套 reference repo 仍为干净 Git 工作树，根工具链通过 ignore 排除它们。
 
 ## Foundation 验收后状态

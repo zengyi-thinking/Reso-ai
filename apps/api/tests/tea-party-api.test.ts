@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import { buildApp } from "../src/app.js";
 import type { ConnectionRecord } from "../src/product/entities.js";
 import { InMemoryProductRepository } from "../src/product/in-memory-repository.js";
@@ -41,11 +41,11 @@ const sessionResolver = async (request: FastifyRequest) => {
 describe("Tea Party query and notification API", () => {
   it("returns ordered records to both participants and denies a third party", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const orchestrator = new TeaPartyService(repository, new MockAgentClient(), { maxTurns: 6 });
+    const orchestrator = new TeaPartyService(repository, new TestAgentClient(), { maxTurns: 6 });
     await orchestrator.onRelationshipEstablished(connectionId, traceId);
     await orchestrator.run(connectionId);
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository,
       sessionUserResolver: sessionResolver,
     });
@@ -81,7 +81,7 @@ describe("Tea Party query and notification API", () => {
     ] as const) {
       const repository = new InMemoryProductRepository({ connections: [record] });
       app = await buildApp({
-        agentClient: new MockAgentClient(),
+        agentClient: new TestAgentClient(),
         repository,
         sessionUserResolver: sessionResolver,
       });
@@ -99,11 +99,11 @@ describe("Tea Party query and notification API", () => {
 
   it("exposes ready notifications only to connection participants", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const orchestrator = new TeaPartyService(repository, new MockAgentClient(), { maxTurns: 6 });
+    const orchestrator = new TeaPartyService(repository, new TestAgentClient(), { maxTurns: 6 });
     await orchestrator.onRelationshipEstablished(connectionId, traceId);
     await orchestrator.run(connectionId);
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository,
       sessionUserResolver: sessionResolver,
     });
@@ -132,11 +132,11 @@ describe("Tea Party query and notification API", () => {
 
   it("rejects retry unless the current mission is retryable", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const orchestrator = new TeaPartyService(repository, new MockAgentClient(), { maxTurns: 6 });
+    const orchestrator = new TeaPartyService(repository, new TestAgentClient(), { maxTurns: 6 });
     await orchestrator.onRelationshipEstablished(connectionId, traceId);
     await orchestrator.run(connectionId);
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository,
       sessionUserResolver: sessionResolver,
     });
@@ -151,11 +151,11 @@ describe("Tea Party query and notification API", () => {
 
   it("streams a ready notification over SSE without exposing message content", async () => {
     const repository = new InMemoryProductRepository({ connections: [connection()] });
-    const orchestrator = new TeaPartyService(repository, new MockAgentClient(), { maxTurns: 6 });
+    const orchestrator = new TeaPartyService(repository, new TestAgentClient(), { maxTurns: 6 });
     await orchestrator.onRelationshipEstablished(connectionId, traceId);
     await orchestrator.run(connectionId);
     app = await buildApp({
-      agentClient: new MockAgentClient(),
+      agentClient: new TestAgentClient(),
       repository,
       sessionUserResolver: sessionResolver,
     });

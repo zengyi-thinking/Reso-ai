@@ -1,6 +1,6 @@
 import type { SocialActRequest, SocialActResponse } from "@reso/contracts";
 import { describe, expect, it } from "vitest";
-import { MockAgentClient } from "../src/agent-client/mock-agent-client.js";
+import { TestAgentClient } from "./test-agent-client.js";
 import {
   createDevelopmentRepository,
   demoIds,
@@ -12,7 +12,7 @@ describe("development demo bootstrap", () => {
     const repository = createDevelopmentRepository();
 
     await expect(
-      prepareDevelopmentDemo(repository, new MockAgentClient("unavailable")),
+      prepareDevelopmentDemo(repository, new TestAgentClient("unavailable")),
     ).resolves.toBeUndefined();
 
     await expect(
@@ -24,7 +24,7 @@ describe("development demo bootstrap", () => {
   });
 
   it("still fails fast for unexpected bootstrap defects", async () => {
-    class BrokenAgentClient extends MockAgentClient {
+    class BrokenAgentClient extends TestAgentClient {
       override async actSocially(_request: SocialActRequest): Promise<SocialActResponse> {
         throw new Error("unexpected implementation defect");
       }

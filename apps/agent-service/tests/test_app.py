@@ -103,3 +103,99 @@ def test_persona_initialize_derives_hypotheses_from_journey_answers() -> None:
     single = next(h for h in hypotheses if "单次证据" in h)
     assert "主动帮忙" in single
     assert payload["changeSummary"].startswith("Initialized from Journey answers")
+
+
+def test_product_assist_contracts_use_the_configured_provider() -> None:
+    request_id = str(uuid4())
+    requester_id = str(uuid4())
+    connection_id = str(uuid4())
+    message_id = str(uuid4())
+    sender_id = str(uuid4())
+    agent_id = str(uuid4())
+    trace_id = str(uuid4())
+
+    analyzed = client.post(
+        "/v1/assist/analyze",
+        json={
+            "requestId": request_id,
+            "idempotencyKey": "assist:analyze:1",
+            "requesterUserId": requester_id,
+            "connectionId": connection_id,
+            "sourceMessageId": message_id,
+            "sourceText": "周末要不要找家安静的咖啡馆？",
+            "senderUserId": sender_id,
+            "agentId": agent_id,
+            "traceId": trace_id,
+        },
+    )
+    assert analyzed.status_code == 200
+    assert analyzed.json()["traceId"] == trace_id
+    assert analyzed.json()["replyRoutes"]
+
+    polished = client.post(
+        "/v1/assist/polish",
+        json={
+            "requestId": str(uuid4()),
+            "idempotencyKey": "assist:polish:1",
+            "requesterUserId": requester_id,
+            "connectionId": connection_id,
+            "draft": "好啊，什么时候？",
+            "replyToMessageId": message_id,
+            "agentId": agent_id,
+            "traceId": trace_id,
+        },
+    )
+    assert polished.status_code == 200
+    assert polished.json()["traceId"] == trace_id
+    assert polished.json()["candidates"]
+
+
+def test_tea_party_v1_is_separate_from_legacy_social_contract() -> None:
+    mission_id = str(uuid4())
+    connection_id = str(uuid4())
+    speaker_id = str(uuid4())
+    listener_id = str(uuid4())
+    trace_id = str(uuid4())
+    acted = client.post(
+        "/v1/tea-party/act",
+        json={
+            "missionId": mission_id,
+            "connectionId": connection_id,
+            "turnNo": 8,
+            "speakerAgentId": speaker_id,
+            "listenerAgentId": listener_id,
+            "priorMessages": [],
+            "disclosureLevel": "L2_SOCIAL",
+            "maxContentLength": 2000,
+            "idempotencyKey": "mission:turn:8",
+            "traceId": trace_id,
+        },
+    )
+    assert acted.status_code == 200
+    assert acted.json()["speakerAgentId"] == speaker_id
+    assert acted.json()["disclosure"] == {
+        "decision": "ALLOW",
+        "level": "L2_SOCIAL",
+        "reasonCode": "product-authorized-l2",
+    }
+    assert acted.json()["stopReason"] == "max_turns"
+
+    evaluated = client.post(
+        "/v1/tea-party/evaluate",
+        json={
+            "missionId": mission_id,
+            "messages": [
+                {
+                    "id": str(uuid4()),
+                    "turnNo": 1,
+                    "speakerAgentId": speaker_id,
+                    "content": acted.json()["content"],
+                    "createdAt": "2026-08-26T08:00:00+08:00",
+                }
+            ],
+            "traceId": trace_id,
+        },
+    )
+    assert evaluated.status_code == 200
+    assert evaluated.json()["traceId"] == trace_id
+    assert evaluated.json()["summary"]["conversationStarter"]

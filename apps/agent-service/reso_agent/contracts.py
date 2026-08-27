@@ -386,6 +386,118 @@ class PersonaVersion(ContractModel):
     created_at: datetime
 
 
+class ReplyRoute(ContractModel):
+    id: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100)
+    suggested_reply: str = Field(min_length=1, max_length=2_000)
+
+
+class AnalyzeIncomingRequest(ContractModel):
+    request_id: UUID
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    requester_user_id: UUID
+    connection_id: UUID
+    source_message_id: UUID
+    source_text: str = Field(min_length=1, max_length=8_000)
+    sender_user_id: UUID
+    agent_id: UUID
+    trace_id: UUID
+
+
+class AnalyzeIncomingResponse(ContractModel):
+    interpretation: str = Field(min_length=1, max_length=4_000)
+    reply_routes: list[ReplyRoute] = Field(max_length=5)
+    trace_id: UUID
+
+
+class PolishCandidate(ContractModel):
+    id: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+class PolishDraftRequest(ContractModel):
+    request_id: UUID
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    requester_user_id: UUID
+    connection_id: UUID
+    draft: str = Field(min_length=1, max_length=2_000)
+    reply_to_message_id: UUID | None
+    agent_id: UUID
+    trace_id: UUID
+
+
+class PolishDraftResponse(ContractModel):
+    candidates: list[PolishCandidate] = Field(min_length=1, max_length=5)
+    trace_id: UUID
+
+
+class TeaPartyAgentMessage(ContractModel):
+    id: UUID
+    turn_no: int = Field(ge=1, le=8)
+    speaker_agent_id: UUID
+    content: str = Field(min_length=1, max_length=2_000)
+    created_at: datetime
+
+
+class SocialActRequestV1(ContractModel):
+    mission_id: UUID
+    connection_id: UUID
+    turn_no: int = Field(ge=1, le=8)
+    speaker_agent_id: UUID
+    listener_agent_id: UUID
+    prior_messages: list[TeaPartyAgentMessage] = Field(max_length=8)
+    disclosure_level: Literal["L2_SOCIAL"]
+    max_content_length: int = Field(ge=1, le=2_000)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    trace_id: UUID
+
+
+class DisclosureDecisionV1(ContractModel):
+    decision: Literal["ALLOW", "DENY", "ASK_USER"]
+    level: Literal[
+        "L0_INTERNAL", "L1_PUBLIC", "L2_SOCIAL", "L3_RELATIONSHIP", "L4_PRIVATE", "L5_SECRET"
+    ]
+    reason_code: str = Field(min_length=1)
+
+
+class SocialActResponseV1(ContractModel):
+    speaker_agent_id: UUID
+    content: str = Field(min_length=1, max_length=2_000)
+    disclosure: DisclosureDecisionV1
+    should_stop: bool
+    stop_reason: (
+        Literal[
+            "max_turns",
+            "agent_requested",
+            "budget_exhausted",
+            "consent_revoked",
+            "relationship_blocked",
+            "disclosure_blocked",
+            "agent_failed",
+            "cancelled",
+        ]
+        | None
+    )
+    trace_id: UUID
+    agent_version_id: UUID | None = None
+
+
+class SocialEvaluateRequestV1(ContractModel):
+    mission_id: UUID
+    messages: list[TeaPartyAgentMessage] = Field(min_length=1, max_length=8)
+    trace_id: UUID
+
+
+class TeaPartySummary(ContractModel):
+    headline: str = Field(min_length=1, max_length=300)
+    conversation_starter: str = Field(min_length=1, max_length=500)
+
+
+class SocialEvaluateResponseV1(ContractModel):
+    summary: TeaPartySummary
+    trace_id: UUID
+
+
 class MissionBudget(ContractModel):
     max_model_calls: int = Field(gt=0)
     max_tokens: int = Field(gt=0)

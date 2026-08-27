@@ -26,11 +26,11 @@ describe("social worker event adapter", () => {
       stopForBlock: vi.fn(async () => undefined),
     };
     await handleSocialMission(event("social_mission.created", { connectionId: id }), runner);
-    await handleSocialMission(event("relationship.updated", { connectionId: id }), runner);
+    await handleSocialMission(event("connection.established", { connectionId: id }), runner);
     await handleSocialMission(event("consent.granted", { connectionId: id, userId: id }), runner);
     await handleSocialMission(event("consent.revoked", { connectionId: id, userId: id }), runner);
     await handleSocialMission(
-      event("relationship.blocked", { connectionId: id, blockerUserId: id }),
+      event("connection.blocked", { connectionId: id, blockerUserId: id }),
       runner,
     );
     expect(runner.run).toHaveBeenCalledOnce();
