@@ -8,8 +8,8 @@ Web
       └─ Product API ── PostgreSQL (formal truth)
              │        └─ Outbox → Redis → Worker
              └─ IAgentClient
-                  ├─ MockAgentClient
-                  └─ ResoAgentClient → FastAPI Agent Runtime
+                  ├─ ResoAgentClient (real MiniMax, fail-fast)
+                  └─ DeterministicModelProvider (test/CI only) → FastAPI Agent Runtime
                                            ├─ Context / Memory retrieval
                                            ├─ Persona / Relationship context
                                            ├─ Mode / Policy / Planner / Tools

@@ -10,3 +10,5 @@ API 通过 `IAgentClient` 选择 `MockAgentClient` 或 `ResoAgentClient`。本�
 ## Consequences
 
 Frontend/Backend 不等待 Agent，也不依赖付费模型；必须用契约测试持续防止 Mock 漂移或过度理想化。
+
+> 2026-08-26 更新：按 Real Model First 决策，MockAgentClient 已从产品路径移除；本 ADR 的契约一致性要求继续适用于测试 stub。

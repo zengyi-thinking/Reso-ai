@@ -35,6 +35,7 @@ from reso_agent.contracts import (
 from reso_agent.lab import LabWorkspace
 from reso_agent.models.provider import ModelProviderError
 from reso_agent.models.router import model_provider_for, model_route_from_env
+from reso_agent.persona.draft import build_journey_draft
 from reso_agent.runtime.pipeline import AgentRuntime
 
 app = FastAPI(title="Reso Agent", version="0.1.0")
@@ -74,17 +75,19 @@ async def reflect(_request: AgentReflectionRequest) -> AgentReflectionResponse:
 
 @app.post("/v1/persona/initialize", response_model=PersonaVersion, response_model_by_alias=True)
 async def initialize_persona(request: PersonaInitializeRequest) -> PersonaVersion:
-    return PersonaVersion(
-        id=uuid4(),
-        profile_id=request.user_id,
-        version=1,
-        content=PersonaContent(
-            uncertain_hypotheses=["Journey draft requires explicit user confirmation."]
-        ),
-        change_summary="Initialized from Journey answers",
-        confirmed_by_user=False,
-        created_at=datetime.now(UTC),
-    )
+    if not request.answers:
+        return PersonaVersion(
+            id=uuid4(),
+            profile_id=request.user_id,
+            version=1,
+            content=PersonaContent(
+                uncertain_hypotheses=["Journey draft requires explicit user confirmation."]
+            ),
+            change_summary="Initialized without Journey answers",
+            confirmed_by_user=False,
+            created_at=datetime.now(UTC),
+        )
+    return build_journey_draft(request)
 
 
 @app.post(

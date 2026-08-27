@@ -31,19 +31,19 @@ class StubAgentClient implements IAgentClient {
     };
   }
 
-  async reflect(request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
+  async reflect(_request: AgentReflectionRequest): Promise<AgentReflectionResponse> {
     return { memoryCandidates: [], personaPatchCandidates: [] };
   }
 
-  async initializePersona(request: PersonaInitializeRequest): Promise<PersonaVersion> {
+  async initializePersona(_request: PersonaInitializeRequest): Promise<PersonaVersion> {
     throw new Error("not needed in these tests");
   }
 
-  async suggestPersonaPatch(request: AgentReflectionRequest): Promise<PersonaPatchCandidate[]> {
+  async suggestPersonaPatch(_request: AgentReflectionRequest): Promise<PersonaPatchCandidate[]> {
     return [];
   }
 
-  async runSocialAction(request: SocialMission): Promise<SocialMissionResult> {
+  async runSocialAction(_request: SocialMission): Promise<SocialMissionResult> {
     throw new Error("not needed in these tests");
   }
 

@@ -26,3 +26,11 @@ Context Builder 每轮只装配相关 Persona slice、可解释 Top-K Memory、R
 Trace 采用 allowlist：input summary/reference、persona version、retrieved memory IDs、relationship、mode、policy、tools、model、latency、output、candidate IDs、eval result。不得保存 Chain-of-Thought、密钥、Authorization header 或未脱敏 provider 原始载荷。
 
 用户可见的工作过程使用共享 Agent Event Stream：`status` 描述真实 Runtime 阶段，`public_reflection` 提供 evidence-backed 的公开解释，`message` 承载暂定、继续或最终回复。Trace 只记录 cadence、事件类型与 evidence refs；Provider 私有推理从不进入事件流。
+
+## Runtime modules（2026-08-27 补齐）
+
+- **Presence**：`presence/state.py` 从授权输入推导同行状态（累计轮次、共享记忆数、连续性：首次/持续/回归），以 `[Presence]` 段进入系统上下文；不虚构任何状态。
+- **Pattern**：`pattern/detector.py` 做可解释模式检测——同一主题词在 ≥2 条相互独立的证据记忆中出现即成模式；显式 Correction 记为 exception 并下调置信度（纠正次数 ≥ 出现次数时该模式不成立）。Reflection 的 hypothesis Patch 由模式驱动，不再写死内容。
+- **事实/解释分离校验**：`runtime/verification.py` 对 reconsidered 最终立场做运行时标记检查；未通过则单次重试（Prompt 明确要求区分观察与解读），仍未通过在 Trace 标记 `fact_separation_verified=false` 并在 Lab eval 中可见。
+- **Consent 接缝**：`AgentAuthorizedContext.activeProxyConsent`（缺省 false，fail-closed）。Pipeline 从授权上下文读取；只有 Product API 在验证过有效、未撤销的 Consent 后才可置 true。这是 Phase 4 Proxy Mission 的既定前置，当前默认拒绝。
+- **Journey 草稿**：`persona/draft.py` 从 Journey 答案推导 Persona 草稿——每个选择只构成 uncertain hypothesis（引用 question/choice ID），跨情境重复的选择提升置信度但仍为假设；`confirmedByUser` 恒为 false。

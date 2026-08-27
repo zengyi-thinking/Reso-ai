@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from reso_agent.app import app
-from reso_agent.models.provider import DeterministicModelProvider
 from reso_agent.contracts import LabPatchDecision, LabSessionCreateRequest
 from reso_agent.lab import LabWorkspace
+from reso_agent.models.provider import DeterministicModelProvider
 
 client = TestClient(app)
 
@@ -117,9 +117,7 @@ def test_lab_supports_three_continuous_turns() -> None:
 @pytest.mark.asyncio
 async def test_longitudinal_simulation_becomes_more_specific_after_correction() -> None:
     workspace = LabWorkspace(model_provider=DeterministicModelProvider())
-    session = workspace.create_session(
-        LabSessionCreateRequest(user_slug="user-alice")
-    )
+    session = workspace.create_session(LabSessionCreateRequest(user_slug="user-alice"))
 
     day_1 = await workspace.simulate(session.id, 1)
     day_7 = await workspace.simulate(session.id, 7)

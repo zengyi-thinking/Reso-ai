@@ -32,5 +32,6 @@ class TraceRecord(BaseModel):
     memory_candidate_count: int = Field(ge=0)
     persona_candidate_count: int = Field(ge=0)
     cadence: ConversationCadence = ConversationCadence.DIRECT
+    fact_separation_verified: bool = True
     public_event_types: tuple[str, ...] = ()
     public_evidence_refs: tuple[str, ...] = ()

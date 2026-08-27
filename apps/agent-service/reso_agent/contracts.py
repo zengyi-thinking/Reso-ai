@@ -219,6 +219,9 @@ class AgentAuthorizedContext(ContractModel):
     memories: list[MemoryRecord] = Field(default_factory=list)
     relationship: RelationshipContext | None = None
     recent_messages: list[RecentMessage] = Field(default_factory=list)
+    # Fail-closed seam: only Product API may set this after verifying an active,
+    # unrevoked consent grant; absence always means "no proxy consent".
+    active_proxy_consent: bool = False
 
 
 class AgentTurnRequest(ContractModel):

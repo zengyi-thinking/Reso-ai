@@ -10,6 +10,7 @@ from reso_agent.contracts import (
     RelationshipUpdateCandidate,
     RetrievedMemory,
 )
+from reso_agent.pattern.detector import PatternDetector
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,15 @@ class ReflectionResult:
 
 class ReflectionService:
     """Emits reviewable candidates only; Product API remains the commit authority."""
+
+    def __init__(self, pattern_detector: PatternDetector | None = None) -> None:
+        self._pattern_detector = pattern_detector or PatternDetector()
+
+    def _corrected_reading(self, retrieved: tuple[RetrievedMemory, ...]) -> str:
+        for item in retrieved:
+            if item.memory.type is MemoryType.REFLECTION:
+                return item.memory.summary
+        return "此前的解释"
 
     def reflect(
         self,
@@ -44,14 +54,16 @@ class ReflectionService:
 
         patches: tuple[PersonaPatchCandidate, ...] = ()
         persona = request.context.persona if request.context else None
+        patterns = self._pattern_detector.detect([item.memory for item in retrieved])
         if is_correction and persona is not None:
+            corrected_reading = self._corrected_reading(retrieved)
             patches = (
                 PersonaPatchCandidate(
                     id=uuid4(),
                     user_id=request.user_id,
                     from_version_id=persona.version_id,
                     path="/confirmedPatterns/socialRhythm",
-                    old_value="用户比较慢热",
+                    old_value=corrected_reading,
                     proposed_value=(
                         "用户并非普遍慢热；更在意互动是否有真实内容，"
                         "面对真正感兴趣的人可以很快进入深度交流。"
@@ -62,19 +74,27 @@ class ReflectionService:
                     created_at=datetime.now(UTC),
                 ),
             )
-        elif persona is not None and self._has_multiple_consistent_evidence(retrieved):
-            evidence = [item.memory.id for item in retrieved[:3]]
+        elif persona is not None and patterns:
+            pattern = patterns[0]
             patches = (
                 PersonaPatchCandidate(
                     id=uuid4(),
                     user_id=request.user_id,
                     from_version_id=persona.version_id,
-                    path="/uncertainHypotheses/meaningfulConversation",
+                    path=f"/uncertainHypotheses/{pattern.topic[:24]}",
                     old_value=None,
-                    proposed_value="用户持续偏好有具体内容的深入交流。",
-                    reason="至少两条相互独立且一致的 persona-related evidence。",
-                    evidence_ids=evidence,
-                    confidence=0.74,
+                    proposed_value=pattern.summary,
+                    reason=(
+                        f"模式检测：{pattern.occurrences} 条相互独立证据反复出现"
+                        f"「{pattern.topic}」主题"
+                        + (
+                            f"，含 {len(pattern.exceptions)} 次用户纠正，置信度相应下调。"
+                            if pattern.exceptions
+                            else "。"
+                        )
+                    ),
+                    evidence_ids=list(pattern.evidence_ids[:3]),
+                    confidence=pattern.confidence,
                     created_at=datetime.now(UTC),
                 ),
             )

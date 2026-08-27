@@ -16,6 +16,7 @@ from reso_agent.knowledge.provider import (
 )
 from reso_agent.memory.retriever import MemoryRetriever
 from reso_agent.persona.provider import PersonaProvider, SelectedPersonaContext
+from reso_agent.presence.state import PresenceBuilder, PresenceState
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class BuiltContext:
     retrieved_memories: tuple[RetrievedMemory, ...]
     recent_messages: tuple[RecentMessage, ...]
     summary: ContextSummary
+    presence: PresenceState
 
 
 class ContextBuilder:
@@ -36,10 +38,12 @@ class ContextBuilder:
         persona_provider: PersonaProvider | None = None,
         memory_retriever: MemoryRetriever | None = None,
         knowledge_provider: RelationshipKnowledgeProvider | None = None,
+        presence_builder: PresenceBuilder | None = None,
     ) -> None:
         self._persona_provider = persona_provider or PersonaProvider()
         self._memory_retriever = memory_retriever or MemoryRetriever()
         self._knowledge_provider = knowledge_provider or NullRelationshipKnowledgeProvider()
+        self._presence_builder = presence_builder or PresenceBuilder()
 
     def build(self, *, message: str, authorized: AgentAuthorizedContext) -> BuiltContext:
         persona = self._persona_provider.select(authorized.persona, message)
@@ -49,8 +53,13 @@ class ContextBuilder:
         recent = tuple(authorized.recent_messages[-8:])
         knowledge = self._knowledge_provider.relevant_context(message)
         relationship = authorized.relationship
+        presence = self._presence_builder.build(
+            relationship=authorized.relationship,
+            memories=authorized.memories,
+            recent_messages=authorized.recent_messages,
+        )
 
-        sections = [f"[Agent Identity]\n{RESO_AGENT_IDENTITY}"]
+        sections = [f"[Agent Identity]\n{RESO_AGENT_IDENTITY}", f"[Presence]\n{presence.summary}"]
         if persona.fields:
             sections.append(
                 "[Relevant Personal Manual]\n"
@@ -74,6 +83,7 @@ class ContextBuilder:
             selected_persona=persona,
             retrieved_memories=memories,
             recent_messages=recent,
+            presence=presence,
             summary=ContextSummary(
                 persona_fields=list(persona.fields),
                 memory_ids=[item.memory.id for item in memories],

@@ -42,6 +42,8 @@ class ModelResponse:
 
 
 class ModelProvider(Protocol):
+    name: str
+
     async def generate(self, request: ModelRequest) -> ModelResponse: ...
 
 

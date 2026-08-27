@@ -129,6 +129,7 @@ export const AgentTurnRequestSchema = z.object({
       recentMessages: z.array(
         z.object({ id: UuidSchema, role: z.enum(["user", "agent"]), content: z.string().min(1) }),
       ),
+      activeProxyConsent: z.boolean().default(false),
     })
     .optional(),
 });

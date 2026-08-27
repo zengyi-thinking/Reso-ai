@@ -24,7 +24,7 @@ pnpm dev
 uv run --project apps/agent-service uvicorn reso_agent.app:app --reload --port 8000
 ```
 
-根 `pnpm dev` 会先 build shared packages，再并行启动 Web/API/Worker/Agent Lab。默认 API 使用 Mock Agent；设置 `AGENT_PROVIDER=reso-agent` 才调用本地 FastAPI。
+根 `pnpm dev` 会先 build shared packages，再并行启动 Web/API/Worker/Agent Lab。API 始终调用本地 FastAPI（Reso Agent），需要在 `.env` 配置可用的 MiniMax `LLM_API_KEY`；Python 测试通过 `RESO_MODEL_ROUTE=deterministic` 保持无密钥运行。
 
 ## 数据库与事件接缝验证
 

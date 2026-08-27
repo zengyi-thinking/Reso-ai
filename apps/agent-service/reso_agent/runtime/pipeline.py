@@ -23,6 +23,7 @@ from reso_agent.models.provider import (
     create_real_provider_from_env,
 )
 from reso_agent.policy.disclosure import DisclosurePolicy, DisclosureResult, PolicyDecision
+from reso_agent.presence.state import PresenceBuilder, PresenceState
 from reso_agent.reflection.service import ReflectionResult, ReflectionService
 from reso_agent.runtime.cadence import CadenceDecision, ConversationCadencePolicy
 from reso_agent.runtime.mode_router import ModeRouter, ModeSelection, TurnPerception
@@ -32,6 +33,7 @@ from reso_agent.runtime.public_output import (
     parse_public_output,
     public_output_contract,
 )
+from reso_agent.runtime.verification import separates_fact_from_interpretation
 from reso_agent.tracing.trace import TraceRecord
 
 _PROMPT_ROOT = Path(__file__).parents[1] / "prompts"
@@ -52,6 +54,8 @@ class RuntimeTurnDetails:
     model: ModelMetadata
     reflection: ReflectionResult
     cadence: CadenceDecision
+    presence: PresenceState
+    fact_separation_verified: bool
 
 
 class AgentRuntime:
@@ -66,6 +70,7 @@ class AgentRuntime:
         context_builder: ContextBuilder | None = None,
         reflection: ReflectionService | None = None,
         cadence_policy: ConversationCadencePolicy | None = None,
+        presence_builder: PresenceBuilder | None = None,
     ) -> None:
         self._model_provider = model_provider or create_real_provider_from_env()
         self._policy = policy or DisclosurePolicy()
@@ -73,6 +78,7 @@ class AgentRuntime:
         self._context_builder = context_builder or ContextBuilder()
         self._reflection = reflection or ReflectionService()
         self._cadence_policy = cadence_policy or ConversationCadencePolicy()
+        self._presence_builder = presence_builder or PresenceBuilder()
 
     async def turn(self, request: AgentTurnRequest) -> tuple[AgentTurnResponse, TraceRecord]:
         details = await self.turn_with_details(request)
@@ -102,7 +108,12 @@ class AgentRuntime:
             on_progress(cadence.status_events[0])
         policy = self._policy.decide(
             proxy_requested=selection.mode is AgentMode.PROXY,
-            active_consent=False,
+            active_consent=authorized.active_proxy_consent,
+        )
+        presence = self._presence_builder.build(
+            relationship=authorized.relationship,
+            memories=authorized.memories,
+            recent_messages=authorized.recent_messages,
         )
         version = "v1" if selection.mode is AgentMode.PROXY else "v3"
         prompt_version = f"{selection.mode.value}/{version}"
@@ -121,6 +132,7 @@ class AgentRuntime:
                 cadence=ConversationCadence.DIRECT,
                 events=[AgentMessageEvent(position="final", text=message)],
             )
+            fact_separation_verified = True
         else:
             mode_prompt = (_PROMPT_ROOT / selection.mode.value / f"{version}.md").read_text(
                 encoding="utf-8"
@@ -199,6 +211,47 @@ class AgentRuntime:
                         final_response.metadata.completion_tokens,
                     ),
                 )
+                # Runtime-enforced fact/interpretation separation: one retry when
+                # the revised stance still reads as a bare conclusion.
+                fact_separation_verified = separates_fact_from_interpretation(message)
+                if not fact_separation_verified:
+                    retry_response = await self._model_provider.generate(
+                        replace(
+                            model_request,
+                            generation_phase="reconsider",
+                            draft_text=draft_text,
+                            system_prompt=(
+                                f"{model_request.system_prompt}\n\n"
+                                f"[Reconsider Phase] Your tentative first take was: {draft_text}\n"
+                                "Your previous revised answer stated a conclusion without "
+                                "separating what was observed from how you interpret it. Try "
+                                "again: name the observed facts, mark your reading as one "
+                                "possible interpretation, then output one message event with "
+                                'position "final".'
+                            ),
+                        )
+                    )
+                    retried_message = retry_response.content.strip()
+                    if separates_fact_from_interpretation(retried_message):
+                        public_output = assemble_reconsidered(
+                            decision=cadence,
+                            context=context,
+                            draft_text=draft_text,
+                            final_text=retried_message,
+                        )
+                        message = final_message(public_output)
+                        fact_separation_verified = True
+                        model = ModelMetadata(
+                            provider=model.provider,
+                            model=model.model,
+                            latency_ms=model.latency_ms + retry_response.metadata.latency_ms,
+                            prompt_tokens=_sum_optional(
+                                model.prompt_tokens, retry_response.metadata.prompt_tokens
+                            ),
+                            completion_tokens=_sum_optional(
+                                model.completion_tokens, retry_response.metadata.completion_tokens
+                            ),
+                        )
             else:
                 model_response = await self._model_provider.generate(model_request)
                 public_output = parse_public_output(
@@ -208,6 +261,7 @@ class AgentRuntime:
                 )
                 message = final_message(public_output)
                 model = model_response.metadata
+                fact_separation_verified = True
             reflection = self._reflection.reflect(
                 request=request,
                 is_correction=perception.is_correction,
@@ -236,6 +290,7 @@ class AgentRuntime:
             prompt_version=prompt_version,
             response=response,
             cadence=cadence,
+            fact_separation_verified=fact_separation_verified,
         )
         return RuntimeTurnDetails(
             response=response,
@@ -246,6 +301,8 @@ class AgentRuntime:
             model=model,
             reflection=reflection,
             cadence=cadence,
+            presence=presence,
+            fact_separation_verified=fact_separation_verified,
         )
 
     def _trace(
@@ -260,6 +317,7 @@ class AgentRuntime:
         prompt_version: str,
         response: AgentTurnResponse,
         cadence: CadenceDecision,
+        fact_separation_verified: bool,
     ) -> TraceRecord:
         return TraceRecord(
             trace_id=trace_id,
@@ -288,4 +346,5 @@ class AgentRuntime:
                 if hasattr(event, "evidence_refs")
                 for reference in event.evidence_refs
             ),
+            fact_separation_verified=fact_separation_verified,
         )

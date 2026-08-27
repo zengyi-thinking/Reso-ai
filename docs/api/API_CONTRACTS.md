@@ -22,7 +22,7 @@ HTTP 错误统一为 `{ error: { code, message, requestId?, details? } }`。`cod
 
 ## Provider adapter
 
-`IAgentClient` 定义 `turn`、`reflect`、`initializePersona`、`suggestPersonaPatch`、`runSocialAction`、`evaluateSocialInteraction`。`MockAgentClient` 和 `ResoAgentClient` 必须返回相同 Contract；所有远端成功响应再次通过 Zod parse，失败响应通过共享 error envelope parse。真实 provider 失败不会静默切换 Mock。
+`IAgentClient` 定义 `turn`、`reflect`、`initializePersona`、`suggestPersonaPatch`、`runSocialAction`、`evaluateSocialInteraction`。Product API 只装配 `ResoAgentClient`；所有远端成功响应再次通过 Zod parse，失败响应通过共享 error envelope parse。真实 provider 失败直接报错，不存在 Mock 降级路径。
 
 ## EventEnvelope
 

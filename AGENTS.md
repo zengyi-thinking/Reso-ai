@@ -68,9 +68,9 @@ Product API 拥有 User、Journey、Conversation、Persona Version、Relationshi
 
 禁止前端猜字段、Backend 返回 undocumented 字段、Agent 另建 Persona schema。破坏性变更必须版本化，不允许静默改变语义。
 
-## Mock First
+## Real Model First
 
-默认 `AGENT_PROVIDER=mock`。`MockAgentClient` 和 `ResoAgentClient` 必须实现同一 `IAgentClient`，且输出都通过共享 Contract 校验。生产切换真实 Agent 时禁止 silent fallback 到 Mock。
+产品路径全程使用真实 MiniMax 模型：Product API 只装配 `ResoAgentClient`，Agent Service 入口默认 `RESO_MODEL_ROUTE=real`，配置缺失或模型失败直接报错，禁止 silent fallback。`DeterministicModelProvider` 仅作为测试/CI 夹具存在（测试显式注入或经 `RESO_MODEL_ROUTE=deterministic`），任何产品代码路径不得引用它。
 
 ## Memory and Persona
 
@@ -144,7 +144,7 @@ Reso Agent 不应表现为“等待计算 → 输出答案”的机器，而应�
 - 变更保持 install、dev、build、test、lint、typecheck 可用。
 - 未越过 ownership 或隐私边界。
 - Contract、migration、测试、文档与实现一致。
-- Mock 路径仍可在无真实模型/无 API Key 环境运行。
+- 测试路径可在无真实模型/无 API Key 环境运行（deterministic route）。
 - Mobile 与 desktop UI 均可用，交互目标至少 44px，支持 reduced motion。
 - 没有把 Candidate 当正式事实，也没有把 Recommendation 当用户决定。
 

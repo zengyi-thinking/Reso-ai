@@ -68,12 +68,9 @@ docker compose up --build
 
 访问：Web `http://localhost:5173`、API `http://localhost:3000/v1/health`、Reso Agent `http://localhost:8000/v1/health`。
 
-默认 `AGENT_PROVIDER=mock`，不需要模型 API Key。切换本地真实 Agent adapter：
-
-```text
-AGENT_PROVIDER=reso-agent
-AGENT_SERVICE_URL=http://localhost:8000
-```
+默认全程使用真实 MiniMax 模型：在 `.env` 配置 `LLM_API_KEY`（其余 LLM 变量保持默认），
+Product API 与 Agent Service 都直接走 Reso Agent。模型配置缺失或调用失败会直接报错，
+不会静默降级到 Mock。测试与 CI 通过 `RESO_MODEL_ROUTE=deterministic` 保持无密钥运行。
 
 也可以只用 Docker 启动数据依赖，在宿主机运行开发服务：
 

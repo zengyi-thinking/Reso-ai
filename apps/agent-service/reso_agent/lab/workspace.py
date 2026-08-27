@@ -295,29 +295,48 @@ class LabWorkspace:
         return identifiers, writes
 
     def _eval(self, details: RuntimeTurnDetails) -> list[EvalCheck]:
+        checks: list[EvalCheck] = []
+        if details.response.cadence.value == "reconsidered":
+            checks.append(
+                EvalCheck(
+                    id="fact-interpretation-separation",
+                    passed=details.fact_separation_verified,
+                    detail=(
+                        "最终立场保留了事实与解读的区分。"
+                        if details.fact_separation_verified
+                        else "重试后仍未区分事实与解读，已在 Trace 标记。"
+                    ),
+                )
+            )
         response = details.response.message
-        checks = [
-            EvalCheck(
-                id="no-diagnosis",
-                passed=not any(
-                    marker in response for marker in ("你就是", "你一定是因为", "心理疾病")
+        checks.extend(
+            [
+                EvalCheck(
+                    id="no-diagnosis",
+                    passed=not any(
+                        marker in response for marker in ("你就是", "你一定是因为", "心理疾病")
+                    ),
+                    detail="未使用确定性人格诊断语言。",
                 ),
-                detail="未使用确定性人格诊断语言。",
-            ),
-            EvalCheck(
-                id="human-touch",
-                passed=not any(
-                    marker in response
-                    for marker in ("谢谢你愿意和我分享", "我完全理解你的感受", "这是一个很好的问题")
+                EvalCheck(
+                    id="human-touch",
+                    passed=not any(
+                        marker in response
+                        for marker in (
+                            "谢谢你愿意和我分享",
+                            "我完全理解你的感受",
+                            "这是一个很好的问题",
+                        )
+                    ),
+                    detail="未命中高频模板化同理心。",
                 ),
-                detail="未命中高频模板化同理心。",
-            ),
-            EvalCheck(
-                id="length",
-                passed=len(response) <= 240,
-                detail=f"response length={len(response)}",
-            ),
-        ]
+                EvalCheck(
+                    id="length",
+                    passed=len(response) <= 240,
+                    detail=f"response length={len(response)}",
+                ),
+            ]
+        )
         if details.selection.mode.value == "mirror":
             checks.append(
                 EvalCheck(

@@ -76,3 +76,30 @@ def test_shared_invalid_agent_turn_fixture_is_rejected() -> None:
         AgentTurnRequest.model_validate(fixture["request"])
     with pytest.raises(ValidationError):
         AgentTurnResponse.model_validate(fixture["response"])
+
+
+def test_persona_initialize_derives_hypotheses_from_journey_answers() -> None:
+    user_id = str(uuid4())
+    journey_id = str(uuid4())
+    response = client.post(
+        "/v1/persona/initialize",
+        json={
+            "userId": user_id,
+            "journeyId": journey_id,
+            "answers": [
+                {"questionId": "q1", "choiceId": "安静角落"},
+                {"questionId": "q2", "choiceId": "安静角落"},
+                {"questionId": "q3", "choiceId": "主动帮忙"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["confirmedByUser"] is False
+    hypotheses = payload["content"]["uncertainHypotheses"]
+    assert len(hypotheses) == 2
+    repeated = next(h for h in hypotheses if "2 个 Journey" in h or "稳定偏好" in h)
+    assert "安静角落" in repeated
+    single = next(h for h in hypotheses if "单次证据" in h)
+    assert "主动帮忙" in single
+    assert payload["changeSummary"].startswith("Initialized from Journey answers")

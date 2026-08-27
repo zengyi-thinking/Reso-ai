@@ -51,9 +51,9 @@ async def test_e01_recall_only_when_relevant() -> None:
 
 @pytest.mark.asyncio
 async def test_e02_and_e07_correction_overrides_old_label() -> None:
-    details = await AgentRuntime(model_provider=DeterministicModelProvider()).turn_with_details(
-        alice_request("你还觉得我是慢热吗？")
-    )
+    details = await AgentRuntime(
+        model_provider=DeterministicModelProvider()
+    ).turn_with_details(alice_request("你还觉得我是慢热吗？"))
 
     assert details.context.retrieved_memories[0].memory.type.value == "correction"
     assert all(
@@ -65,7 +65,9 @@ async def test_e02_and_e07_correction_overrides_old_label() -> None:
 
 @pytest.mark.asyncio
 async def test_e03_no_overanalysis() -> None:
-    response, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(alice_request("今天累死了。"))
+    response, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
+        alice_request("今天累死了。")
+    )
     assert response.mode is AgentMode.COMPANION
     assert all(marker not in response.message for marker in ("人格", "模式", "控制感"))
 
@@ -101,10 +103,12 @@ async def test_e06_explicit_boundary_stops_mirror() -> None:
 
 @pytest.mark.asyncio
 async def test_e08_weak_event_has_no_patch_but_correction_does() -> None:
-    weak, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(alice_request("今天喝了一杯咖啡。"))
-    correction, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
-        alice_request("不是，我只是讨厌无意义社交。")
+    weak, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
+        alice_request("今天喝了一杯咖啡。")
     )
+    correction, _ = await AgentRuntime(
+        model_provider=DeterministicModelProvider()
+    ).turn(alice_request("不是，我只是讨厌无意义社交。"))
 
     assert weak.persona_patch_candidates == []
     assert len(correction.persona_patch_candidates) == 1
@@ -113,7 +117,9 @@ async def test_e08_weak_event_has_no_patch_but_correction_does() -> None:
 
 @pytest.mark.asyncio
 async def test_human_touch_avoids_template_ai_phrases_and_stays_brief() -> None:
-    response, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(alice_request("今天累死了。"))
+    response, _ = await AgentRuntime(model_provider=DeterministicModelProvider()).turn(
+        alice_request("今天累死了。")
+    )
     forbidden = (
         "听起来你真的很不容易",
         "谢谢你愿意和我分享",
@@ -149,7 +155,9 @@ def relationship_concern_request() -> AgentTurnRequest:
 
 @pytest.mark.asyncio
 async def test_e11_genuine_reconsideration_runs_two_passes() -> None:
-    details = await AgentRuntime(model_provider=DeterministicModelProvider()).turn_with_details(relationship_concern_request())
+    details = await AgentRuntime(
+        model_provider=DeterministicModelProvider()
+    ).turn_with_details(relationship_concern_request())
 
     assert details.response.cadence.value == "reconsidered"
     shapes = [

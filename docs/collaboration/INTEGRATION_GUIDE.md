@@ -6,7 +6,7 @@ Web 从 `@reso/contracts` 导入类型/schema，通过 Product API 请求。开�
 
 ## Backend ↔ Agent
 
-只在 composition root 根据 `AGENT_PROVIDER` 创建 `MockAgentClient` 或 `ResoAgentClient`。两者实现 `IAgentClient`；远端结果必须 parse。生产配置为 `reso-agent` 时，失败应显式暴露，不 silent fallback。
+只在 composition root 创建 `ResoAgentClient`（唯一实现）。远端结果必须 parse；真实 provider 失败直接显式暴露，不 silent fallback。测试使用测试文件内的内联 stub，产品代码不提供 Mock。
 
 ## TypeScript ↔ Python
 

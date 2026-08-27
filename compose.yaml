@@ -34,7 +34,10 @@ services:
       dockerfile: infra/docker/agent-service.Dockerfile
     environment:
       APP_ENV: development
-      LLM_PROVIDER: mock
+      LLM_PROVIDER: minimax
+      LLM_MODEL: ${LLM_MODEL:-MiniMax-M3}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.minimax.io/v1}
       TRACE_ENABLED: "false"
     ports:
       - "8000:8000"
@@ -59,7 +62,6 @@ services:
       API_PORT: 3000
       DATABASE_URL: postgresql://reso:reso@postgres:5432/reso
       REDIS_URL: redis://redis:6379/0
-      AGENT_PROVIDER: mock
       AGENT_SERVICE_URL: http://agent-service:8000
       TRACE_ENABLED: "false"
     ports:

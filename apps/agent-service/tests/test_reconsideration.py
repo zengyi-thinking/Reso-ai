@@ -81,7 +81,9 @@ async def test_reconsidered_runs_two_genuine_passes() -> None:
 
 @pytest.mark.asyncio
 async def test_reconsidered_latency_and_tokens_cover_both_passes() -> None:
-    details = await AgentRuntime(model_provider=DeterministicModelProvider()).turn_with_details(reconsideration_request())
+    details = await AgentRuntime(model_provider=DeterministicModelProvider()).turn_with_details(
+        reconsideration_request()
+    )
     # Deterministic provider reports zero latency; the assertion documents that
     # two-pass metadata flows through instead of only the final pass.
     assert details.model.provider == "deterministic"
