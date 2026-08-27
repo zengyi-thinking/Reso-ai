@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import type { AgentPublicEvent, ProductMessage, PublicProcessMode } from "@reso/contracts";
 import { loadConversation, streamTurn } from "../../services/product.js";
 import { buildProcessSteps, processSummary } from "./conversation-process.js";
+import { LineIcon } from "../../components/LineIcon.js";
+import { ResoAgentArtwork } from "../../components/ResoAgentArtwork.js";
 
 type LiveItem = AgentPublicEvent & { key: string };
 export function AgentChatPage(): React.JSX.Element {
@@ -88,15 +90,33 @@ export function AgentChatPage(): React.JSX.Element {
     }
   }
   return (
-    <section className="chat-page">
+    <section className="chat-page page-enter">
       <header className="chat-header">
-        <div className="mini-avatar">R</div>
-        <div>
+        <div className="mini-avatar">
+          <ResoAgentArtwork alt="Reso Agent" pose="companion" />
+        </div>
+        <div className="chat-header__identity">
           <strong>Reso</strong>
-          <span>{sending ? "正在跟着你继续想…" : "在这里"}</span>
+          <span>
+            <i className={sending ? "is-thinking" : ""} />
+            {sending ? "正在跟着你继续想…" : "在这里，慢慢说"}
+          </span>
+        </div>
+        <div className="chat-header__privacy">
+          <LineIcon name="lock" /> 私密对话
         </div>
       </header>
       <div className="chat-thread" aria-live="polite" ref={threadRef}>
+        {messages.length === 0 && !sending && (
+          <div className="chat-empty">
+            <div className="chat-empty__art">
+              <ResoAgentArtwork alt="坐着倾听的 Reso Agent" pose="companion" />
+            </div>
+            <p className="eyebrow">我们的第一段对话</p>
+            <h1>我已经带着你的第一版说明书来了。</h1>
+            <p>你可以问我“你现在对我了解多少？”，也可以从今天发生的一件小事说起。</p>
+          </div>
+        )}
         {messages.map((message, index) =>
           message.role === "user" ? (
             <div className="chat-row chat-row--user" key={message.id}>
@@ -143,7 +163,9 @@ export function AgentChatPage(): React.JSX.Element {
             onChange={(event) => setDeepProcess(event.target.checked)}
             type="checkbox"
           />
-          <span>深度关系思考</span>
+          <span>
+            <LineIcon name="spark" /> 深度关系思考
+          </span>
           <small>可选 · 4 步</small>
         </label>
         <textarea
@@ -155,9 +177,13 @@ export function AgentChatPage(): React.JSX.Element {
           rows={1}
         />
         <button aria-label="发送" disabled={sending || !draft.trim()} onClick={() => void submit()}>
-          ↑
+          <LineIcon name="arrow" />
         </button>
-        <small>Enter 发送 · Shift + Enter 换行</small>
+        <small>
+          {sending
+            ? "可以继续输入下一句话；当前回复完成后即可发送"
+            : "Enter 发送 · Shift + Enter 换行"}
+        </small>
       </div>
     </section>
   );
@@ -276,13 +302,17 @@ function PublicEvent({ event }: { event: AgentPublicEvent }) {
   if (event.type === "public_reflection")
     return (
       <div className="reflection-card">
-        <small>✦ 想起了一件与你有关的事</small>
+        <small>
+          <LineIcon name="spark" /> 想起了一件与你有关的事
+        </small>
         <p>{event.text}</p>
       </div>
     );
   return (
     <div className={`chat-row chat-row--agent message-${event.position}`}>
-      <div className="mini-avatar mini-avatar--message">R</div>
+      <div className="mini-avatar mini-avatar--message">
+        <ResoAgentArtwork alt="" decorative pose="companion" />
+      </div>
       <div className="message-bubble message-bubble--agent">{event.text}</div>
     </div>
   );

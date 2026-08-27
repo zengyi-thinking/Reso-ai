@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PersonaContent } from "@reso/contracts";
 import { confirmPersona, loadGuest } from "../../services/product.js";
+import { LineIcon } from "../../components/LineIcon.js";
+import { ResoAgentArtwork } from "../../components/ResoAgentArtwork.js";
 
 const lines = (value: string) =>
   value
@@ -44,19 +46,34 @@ export function PersonaDraftPage(): React.JSX.Element {
     }
   }
   return (
-    <section className="flow-page persona-draft-page">
+    <section className="flow-page persona-draft-page page-enter">
+      <div className="flow-progress" aria-label="认识旅程：第 2 步，共 3 步">
+        <span>02</span>
+        <div>
+          <i style={{ width: "66%" }} />
+        </div>
+        <small>确认初步理解</small>
+      </div>
       <header className="flow-heading">
         <p className="eyebrow">Persona Draft · 你的初步说明书</p>
         <h1>这是我目前对你的理解。</h1>
-        <p>你可以直接改。你的修改会被保留为明确纠正，而不是被下一次模型猜测覆盖。</p>
+        <p>它不是结论。点击卡片即可修改；你的纠正优先于模型之后的猜测。</p>
       </header>
+      <div className="persona-intro">
+        <ResoAgentArtwork alt="Reso Agent 托着一颗发光的记忆体" pose="memory" />
+        <p>
+          <LineIcon name="spark" /> 我把这些线索整理成了五张理解卡。你永远拥有最后解释权。
+        </p>
+      </div>
       <div className="persona-editor">
         <DraftField
+          index="01"
           title="你看重的事"
           value={draft.values.join("\n")}
           onChange={(value) => update("values", lines(value))}
         />
         <DraftField
+          index="02"
           title="你的沟通方式"
           value={String(draft.communicationStyle.preference ?? "")}
           onChange={(value) =>
@@ -64,47 +81,67 @@ export function PersonaDraftPage(): React.JSX.Element {
           }
         />
         <DraftField
+          index="03"
           title="你的社交节奏"
           value={String(draft.socialStyle.rhythm ?? "")}
           onChange={(value) => update("socialStyle", { ...draft.socialStyle, rhythm: value })}
         />
         <DraftField
+          index="04"
           title="关系里的需要"
           value={draft.relationshipNeeds.join("\n")}
           onChange={(value) => update("relationshipNeeds", lines(value))}
         />
         <DraftField
+          index="05"
           title="希望被尊重的边界"
           value={draft.boundaries.join("\n")}
           onChange={(value) => update("boundaries", lines(value))}
         />
       </div>
       <aside className="weak-evidence-note">
-        MBTI 与星座只保留在弱证据区。Reso 不会用它们替你下人格结论。
+        <LineIcon name="check" />
+        <span>
+          <strong>用户纠正优先</strong> · MBTI 与星座只保留在弱证据区，Reso
+          不会用它们替你下人格结论。
+        </span>
       </aside>
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
-      <button className="reso-button" onClick={() => void confirm(draft)} disabled={saving}>
+      <button
+        className="reso-button reso-button--wide"
+        onClick={() => void confirm(draft)}
+        disabled={saving}
+      >
         {saving ? "正在保存你的修正…" : "确认并领取我的 Reso Agent"}
+        {!saving && <LineIcon name="arrow" />}
       </button>
     </section>
   );
 }
 function DraftField({
+  index,
   title,
   value,
   onChange,
 }: {
+  index: string;
   title: string;
   value: string;
   onChange(value: string): void;
 }) {
   return (
     <label className="persona-editor__field">
-      <span>{title}</span>
+      <span className="persona-editor__heading">
+        <b>{index}</b>
+        <span>{title}</span>
+        <em>
+          <LineIcon name="edit" /> 可修改
+        </em>
+      </span>
       <textarea value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );

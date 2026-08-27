@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./app/App.js";
 import "./styles/global.css";
+import "./styles/purple.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Reso.AI root element is missing");

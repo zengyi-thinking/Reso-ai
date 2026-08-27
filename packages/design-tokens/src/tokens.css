@@ -1,12 +1,25 @@
 :root {
+  --reso-color-paper: #fcfbff;
+  --reso-color-lavender: #eee8ff;
+  --reso-color-violet: #7c55e7;
+  --reso-color-violet-deep: #5e3ed1;
+  --reso-color-orchid: #c176e7;
+  --reso-color-peach: #ffb890;
+  --reso-color-muted: #817a91;
   --reso-color-cream: #fff8e8;
   --reso-color-sky: #a9d8f5;
   --reso-color-sky-deep: #5b9ec9;
   --reso-color-leaf: #bfd9b5;
   --reso-color-apricot: #f4c39d;
-  --reso-color-ink: #314b57;
+  --reso-color-ink: #29233c;
   --reso-color-mist: #eef5f4;
   --reso-radius-soft: 18px;
   --reso-radius-card: 28px;
-  --reso-shadow-soft: 0 18px 45px rgba(62, 91, 102, 0.12);
+  --reso-shadow-soft: 0 18px 48px rgba(94, 62, 209, 0.12);
+  --reso-shadow-lift: 0 24px 72px rgba(72, 48, 145, 0.16);
+  --reso-space-unit: 4px;
+  --reso-page-padding-mobile: 22px;
+  --reso-motion-control: 180ms;
+  --reso-motion-entry: 280ms;
+  --reso-motion-progress: 500ms;
 }
