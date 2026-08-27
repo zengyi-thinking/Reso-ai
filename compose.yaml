@@ -11,7 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - reso-postgres:/var/lib/postgresql
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U reso -d reso"]
       interval: 5s
@@ -53,6 +52,17 @@ services:
       timeout: 5s
       retries: 15
 
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["pnpm", "--filter", "@reso/api", "db:migrate"]
+    environment:
+      DATABASE_URL: postgresql://reso:reso@postgres:5432/reso
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -62,6 +72,8 @@ services:
       API_PORT: 3000
       DATABASE_URL: postgresql://reso:reso@postgres:5432/reso
       REDIS_URL: redis://redis:6379/0
+      PRODUCT_REPOSITORY: postgres
+      SESSION_PROVIDER: postgres
       AGENT_SERVICE_URL: http://agent-service:8000
       TRACE_ENABLED: "false"
     ports:
@@ -80,10 +92,33 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       agent-service:
         condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://reso:reso@postgres:5432/reso
+      REDIS_URL: redis://redis:6379/0
+      AGENT_SERVICE_URL: http://agent-service:8000
+      PRODUCT_REPOSITORY: postgres
+      SESSION_PROVIDER: postgres
+      WORKER_POLL_MS: 1000
+      WORKER_BATCH_SIZE: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      agent-service:
+        condition: service_started
 
   web:
     build:

@@ -4,3 +4,7 @@ packages:
   - "apps/worker"
   - "apps/agent-lab"
   - "packages/*"
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
