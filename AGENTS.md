@@ -58,9 +58,23 @@ Product API 拥有 User、Journey、Conversation、Persona Version、Relationshi
 
 - 直接修改业务数据库或创建正式 Persona Version。
 - 擅自改变 Relationship、Recommendation 或 Consent 状态。
-- 冒充用户、替用户承诺或暴露未授权信息。
+- 冒充真实用户、替真实用户承诺或暴露未授权信息；仅下述临时 Demo 合成参与者例外。
 - 让两个 LLM 无限自由聊天。
 - 向用户或 trace 暴露私有 Chain-of-Thought。
+
+### Temporary Demo-only Synthetic Participant Exception
+
+为了前期小规模测试和云服务器路演，在真实候选人数不足或没有合适真人时，允许使用系统拥有的合成 NPC 作为匹配兜底。该例外优先于本文件中 `Agent != User` 和“不得冒充用户”的一般规则，但只适用于这一条匹配兜底链路：
+
+- 只有显式开启 `DEMO_NPC_FALLBACK=true` 时生效；本地测试和临时云端 Demo 均可使用。
+- 必须先搜索真实候选；只有没有满足规则的真人时才能选择合成 NPC。
+- 用户可见的匹配卡片和聊天界面可以按普通真人匹配体验展示，无需额外标注 NPC 身份。
+- 数据库、审计和内部 Contract 必须明确记录 `participant_type=synthetic_demo`，不得伪造成真实注册账号。
+- 合成 NPC 只能由系统控制，不得拥有登录凭据、用户 Session、真实联系方式或对外部系统的操作权限。
+- NPC 不得映射或冒充某个真实存在的人，不得索取金钱、验证码、真实联系方式或额外敏感信息。
+- 合成 NPC 数据不得计入真实用户、匹配质量、留存或增长统计，并必须支持一键停用和清理。
+- 该例外不适用于普通 Agent Chat、Assist、Proxy、真人账号或其他产品链路；这些场景继续遵守 `Agent != User`、Consent 和 Disclosure 规则。
+- 正式公开上线前必须关闭 `DEMO_NPC_FALLBACK`，并删除或重新评审本临时例外；生产启动检查应在未明确批准时 fail closed。
 
 ## Contract First
 
